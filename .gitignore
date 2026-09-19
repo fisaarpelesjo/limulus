@@ -13,6 +13,8 @@ pending_log.csv
 temp/
 backups/
 exportacoes/
+# Propostas locais de texto do bot
+docs/modelos-texto-gerar.md
 # Banco vivo NAO versionado: o bot roda 24/7 na VPS e escreve nele
 # continuamente. Versionar um SQLite que muda sozinho gera conflito binario a
 # cada pull, e conflito de binario significa perder um dos lados -- a VPS e a
