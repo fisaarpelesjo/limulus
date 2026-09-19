@@ -1,5 +1,10 @@
 # Testes
 
+`python tests/botoes_treino_test.py` verifica o fluxo por botoes com Telegram
+simulado e SQLite temporario: migracao 12 para 13, horarios historicos nulos,
+inicio/retomada, carga exibida, recuperacao sem session.json, autorizacao,
+cliques duplicados e fora de ordem, desfazer, conclusao e teclado inicial.
+
 Os testes ficam em:
 
 ```text

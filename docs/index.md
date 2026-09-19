@@ -56,6 +56,7 @@ pip install -r requirements.txt
 python tests/smoke_test.py
 python tests/regras_treino_test.py
 python tests/e2e_training_flow_test.py
+python tests/botoes_treino_test.py
 python tests/dashboard_test.py
 python tests/backup_export_test.py
 python tests/telegram_falhas_test.py

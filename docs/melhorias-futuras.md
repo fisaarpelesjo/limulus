@@ -5,6 +5,9 @@ implementadas no Limulus.
 
 ## Estado Atual
 
+Entregue: fluxo de treino por botoes, carga exibida vinculada ao clique,
+protecao contra duplicidade, inicio/fim persistidos e resumo com duracao.
+
 Nao existem melhorias tecnicas priorizadas pendentes.
 
 Novas propostas devem entrar neste arquivo apenas quando resolverem uma

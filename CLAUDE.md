@@ -28,7 +28,8 @@ Ao consultar o banco em tarefas de manutencao, preferir scripts Python com o
 modulo padrao `sqlite3` ou helpers de `limulus/db_ops.py`. Nao depender
 do binario externo `sqlite3`, pois ele pode nao estar disponivel no PATH local.
 No schema atual, `training_sessions` usa `id`, `date` e `training_type`; nao
-assumir colunas como `started_at`, `completed_at` ou `plan_name`. `training_logs`
+assumir coluna `plan_name`. Desde o schema 13, `started_at` e `completed_at`
+existem e podem ser nulos em sessoes historicas. `training_logs`
 usa `exercise_name` para o nome do exercicio, nao `exercise`, e nao possui
 `logged_at`; usar `session_id`, `sort_order` e `id` para ordenar logs.
 Em consultas via `python -c` no PowerShell, evitar metacaracteres como `|` dentro
@@ -66,7 +67,7 @@ novos de documentacao, mensagens de launcher e textos visiveis ao usuario.
 
 Evite criar novos nomes ou textos em ingles quando houver uma alternativa
 natural em PT-BR. Comandos textuais do Telegram devem usar somente os nomes
-oficiais em portugues e sempre exigir `/`.
+oficiais em portugues e exigir `/`, exceto o texto do teclado "Gerar treino".
 
 ## Sincronizacao Das Instrucoes De Agentes
 
@@ -102,8 +103,18 @@ invalido encerra o polling com erro claro.
 
 Comandos principais em PT-BR:
 
-- `/gerar` cria uma sessao de treino, envia a lista do treino e em seguida
-  indica o primeiro exercicio a executar.
+- `/gerar` e o teclado "Gerar treino" iniciam ou retomam a sessao, sem lista
+  completa. Enviam data/hora de Brasilia e o primeiro exercicio. O teclado
+  some durante o treino e volta ao concluir. O texto "Gerar treino" e a unica
+  excecao aos comandos com barra. Botoes RPE ≤7, 8, 9 e ≥10 registram a carga
+  exibida (extremos armazenados como 7 e 10); nao ha botao sem RPE.
+  Header em caixa alta; body com valores em negrito em linhas de anilhas,
+  series, repeticoes e descanso; footer em italico com barra e total com barra.
+  Sem alvo, pedir a primeira carga manualmente.
+  O exercicio atual em `/gerar`, `/status` e no proximo exercicio usa blocos
+  separados por linhas em branco: nome; anilhas totais, series/repeticoes e
+  descanso com valores em negrito; barra e carga total em italico. Nao usar o
+  prefixo "Comece por". Series e repeticoes ficam em linhas separadas.
 - `/prever` mostra o treino em texto sem salvar sessao ou logs.
 - `/treinob` mostra o Treino B de garagem com pesos calculados pelos alvos do
   treino principal, sem criar sessao ou logs.
@@ -316,7 +327,11 @@ Dashboard local de volume:
 ## Dados E Estado
 
 - Banco versionado: `data/limulus.db`.
-- Versao atual do esquema: `SCHEMA_VERSION = 12`.
+- Versao atual do esquema: `SCHEMA_VERSION = 13`.
+- `training_sessions.started_at` e `completed_at` guardam horarios ISO com
+  UTC-03:00; historicos migrados ficam nulos. `training_buttons` vincula token
+  ao log e carga exibida. Cliques sao atomicos e invalidam botoes do log.
+  Recuperacao considera somente a sessao mais recente, sem reabrir antigas.
 - `schema_migrations` registra migracoes aplicadas; `init_db()` executa
   pendencias em ordem e rejeita bancos com versao futura.
 - `get_session_summary(session_id)` calcula o resumo pos-treino e compara volume

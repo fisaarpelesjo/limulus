@@ -8,7 +8,7 @@ Todos os comandos textuais devem ser enviados com `/`.
 
 | Comando | Finalidade |
 | --- | --- |
-| `/gerar` | Cria uma sessao de treino no SQLite. |
+| `/gerar` ou botão `Gerar treino` | Inicia ou retoma a sessao, mostrando o exercicio atual com botoes de RPE. |
 | `/prever` | Mostra o proximo treino sem salvar sessao ou logs. |
 | `/treinob` | Mostra o Treino B de garagem com pesos calculados pelo treino principal. |
 | `/exercicios` | Lista os exercicios do plano ativo. |

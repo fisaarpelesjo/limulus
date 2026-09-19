@@ -31,7 +31,8 @@ Ao consultar o banco em tarefas de manutencao, preferir scripts Python com o
 modulo padrao `sqlite3` ou helpers de `limulus/db_ops.py`. Nao depender
 do binario externo `sqlite3`, pois ele pode nao estar disponivel no PATH local.
 No schema atual, `training_sessions` usa `id`, `date` e `training_type`; nao
-assumir colunas como `started_at`, `completed_at` ou `plan_name`. `training_logs`
+assumir coluna `plan_name`. Desde o schema 13, `started_at` e `completed_at`
+existem e podem ser nulos em sessoes historicas. `training_logs`
 usa `exercise_name` para o nome do exercicio, nao `exercise`, e nao possui
 `logged_at`; usar `session_id`, `sort_order` e `id` para ordenar logs.
 Em consultas via `python -c` no PowerShell, evitar metacaracteres como `|` dentro
@@ -82,7 +83,8 @@ ajudarem a clareza, mas devem ser acompanhados de contexto em portugues sempre
 que forem visiveis ao usuario ou na documentacao.
 
 Comandos textuais do Telegram devem usar somente os nomes oficiais em PT-BR e
-sempre exigir `/`. Nao aceitar aliases em ingles ou nomes sem barra.
+exigir `/`, exceto o texto exato do teclado "Gerar treino". Nao aceitar outros
+aliases em ingles ou nomes sem barra.
 
 ## Sincronizacao Das Instrucoes De Agentes
 
@@ -150,9 +152,19 @@ completo, com a busca normalizando acento, espaco e alias em `muaythai.buscar_te
 
 Fluxo:
 
-1. `/gerar` cria uma sessao de treino no SQLite, reseta o arquivo de sessao
-   ativa, envia a lista do treino e em seguida indica o primeiro exercicio a
-   executar.
+O exercicio atual em `/gerar`, `/status` e no proximo exercicio usa blocos
+separados por linhas em branco: nome; anilhas totais, series/repeticoes e
+descanso com valores em negrito; barra e carga total em italico. Nao usar o
+prefixo "Comece por". Series e repeticoes ficam em linhas separadas.
+
+1. `/gerar` e "Gerar treino" iniciam uma sessao ou retomam a atual. Enviam
+   data/hora de Brasilia e o primeiro exercicio, sem a lista completa.
+   O teclado de inicio some durante o treino e retorna ao concluir.
+   Botoes RPE ≤7, 8, 9 e ≥10 registram a carga total exibida e avancam;
+   os extremos sao armazenados como 7 e 10. Nao ha botao sem RPE.
+   Header em caixa alta; body com anilhas, series, repeticoes e descanso;
+   footer em italico com barra e total com barra. Apenas valores em negrito
+   no body. Sem alvo, pedir a primeira carga manualmente.
 2. O texto gerado mostra `alvo`, calculado pela ultima carga registrada e pelo RPE, e `descanso`.
 3. `/prever` mostra o mesmo formato sem criar sessao, logs ou `session.json`.
 4. `/treinob` mostra um Treino B de garagem sem criar sessao, logs ou
@@ -251,7 +263,11 @@ Regras importantes:
 Modulo SQLite para exercicios, logs de treino e dados de dieta.
 
 - Banco versionado: `data/limulus.db`.
-- Versao atual do esquema: `SCHEMA_VERSION = 12`.
+- Versao atual do esquema: `SCHEMA_VERSION = 13`.
+- `training_sessions.started_at` e `completed_at` guardam horarios ISO com
+  UTC-03:00; historicos migrados ficam nulos. `training_buttons` vincula token
+  ao log e carga exibida. Cliques sao atomicos e invalidam botoes do log.
+  Recuperacao considera somente a sessao mais recente, sem reabrir antigas.
 - `schema_migrations` registra cada migracao aplicada. `init_db()` executa
   migracoes pendentes em ordem e rejeita bancos com versao futura.
 - `get_session_summary(session_id)` calcula o resumo pos-treino e usa a sessao

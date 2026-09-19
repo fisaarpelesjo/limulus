@@ -13,7 +13,7 @@ dados de dieta.
 
 ## Versao E Migracoes
 
-O esquema atual usa `SCHEMA_VERSION = 12`. A tabela `schema_migrations` registra
+O esquema atual usa `SCHEMA_VERSION = 13`. A tabela `schema_migrations` registra
 uma linha por versao aplicada, com data e hora.
 
 `db_ops.init_db()`:
@@ -39,6 +39,14 @@ Antes de criar uma nova migracao, fazer backup do banco e adicionar um teste que
 parta da versao anterior.
 
 ## Backup, Exportacao E Restauracao
+
+A migracao 13 adiciona `started_at` e `completed_at` a `training_sessions`
+(ISO 8601 com UTC-03:00) e a tabela `training_buttons` (`token`, `log_id`,
+`weight`, `active`). Os horarios historicos permanecem nulos. O token guarda
+a carga exibida e e consumido numa transacao que valida sessao, ordem e
+registro pendente. `/desfazer` invalida os tokens do log e limpa o fim da
+sessao. A exportacao JSON inclui a nova tabela. O banco vivo so deve ser
+migrado apos backup; os testes usam bancos temporarios.
 
 O launcher local usa a API de backup do SQLite, sem copiar o arquivo enquanto
 uma transacao pode estar incompleta:

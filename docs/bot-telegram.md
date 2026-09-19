@@ -8,6 +8,32 @@ limulus/telegram_poller.py
 
 Ele usa long polling pela API HTTP do Telegram. Nao ha webhook nem servidor web.
 
+## Fluxo Por Botoes
+
+O teclado "Gerar treino" inicia ou retoma a sessao e desaparece enquanto ela
+esta ativa. Uma mensagem informa data/hora de Brasilia, seguida do exercicio
+atual, sem lista completa. O header e o nome em caixa alta; o body separa
+anilhas, series, repeticoes e descanso, com valores em negrito; o footer usa
+italico para barra e total com barra.
+
+Os quatro botoes RPE ≤7, 8, 9 e ≥10 registram a carga exibida (os extremos sao
+armazenados como 7 e 10). Nao ha botao sem RPE. A mensagem anterior recebe
+confirmacao e perde os botoes; em seguida aparece o proximo exercicio.
+O resumo final mostra inicio, fim, duracao e os indicadores da sessao, e
+restaura o teclado inicial. Horarios ausentes em sessoes antigas sao omitidos.
+
+`/status` recupera os botoes; `/ajuda` exibe o teclado inicial quando nao ha
+sessao. Entradas numericas permanecem disponiveis para ajustar a carga real
+ou registrar um exercicio que ainda nao tem alvo. "Gerar treino" e a unica
+excecao de texto sem barra, por ser o rotulo do teclado.
+
+`training_buttons` persiste a carga exibida e o token do clique. A gravacao
+atomica rejeita cliques duplicados, botoes antigos, exercicios fora de ordem
+e outras sessoes. O callback valida chat e usuario. Falhas visuais na edicao
+nao desfazem um registro ja salvo; `/status` permite continuar.
+
+Referencia: [teclados e callbacks da API oficial do Telegram](https://core.telegram.org/bots/api#inlinekeyboardmarkup).
+
 ## Logs E Falhas De Rede
 
 O terminal mostra logs com data, hora, nivel e contexto. Comandos sao
@@ -128,28 +154,26 @@ e nao inicia o polling.
 
 ## `/gerar`
 
-Cria uma nova sessao de treino.
+Cria uma sessao de treino ou retoma a sessao atual.
 
 Fluxo:
 
 ```text
 handle_generate()
+  -> load_session() (retoma se houver treino ativo)
   -> ods_ops.generate_training()
   -> ods_ops.write_session(exercises, session_id)
-  -> _format_training_msg(exercises)
-  -> send(texto do treino)
-  -> send("Sessao de treino gerada...")
-  -> send("Agora faca..." com o primeiro exercicio)
+  -> send(data/hora de inicio, remove_keyboard)
+  -> send_current_exercise(primeiro exercicio com botoes RPE)
 ```
 
 O primeiro exercicio gerado atualmente e `Agachamento com barra nas costas` (`3x5`).
 O segundo e `Agachamento sumô com barra à frente` (`3x10`), com foco principal
 nos adutores.
 
-O texto enviado lista cada exercicio com series, repeticoes, carga alvo e
-descanso sugerido. Depois da lista, o bot envia tambem o primeiro exercicio a
-executar no mesmo formato usado para indicar o proximo exercicio apos um
-registro de carga. Quando existe carga anterior para o exercicio, o alvo e
+O texto enviado mostra apenas o exercicio atual com series, repeticoes, carga
+e descanso. A lista completa continua disponivel em `/prever`. Quando existe
+carga anterior para o exercicio, o alvo e
 calculado pela ultima carga registrada e pelo RPE:
 
 ```text

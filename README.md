@@ -25,7 +25,7 @@ comandos fica em [`docs/comandos.md`](docs/comandos.md).
   `temp/dashboard-treino.html`.
 - Backup/exportacao/restauracao: [`gerenciar_dados.py`](gerenciar_dados.py).
 - Extracao de frames: [`gerar_frames.py`](gerar_frames.py).
-- Schema SQLite atual: `SCHEMA_VERSION = 12`, em
+- Schema SQLite atual: `SCHEMA_VERSION = 13`, em
   [`limulus/db_ops.py`](limulus/db_ops.py).
 - Fonte da verdade do treino: SQLite, especialmente `training_plans` e
   `training_plan_exercises`.
@@ -271,7 +271,21 @@ mensagens cosmeticas.
 7. Adiciona `rest_interval` por exercicio.
 8. Adiciona `loading_note` quando o exercicio usa barra/equipamento fixo.
 9. Escreve `session.json` com `date`, `session_id` e exercicios.
-10. Envia a lista do treino e indica o primeiro exercicio pendente.
+10. Envia data/hora de inicio em Brasilia e o primeiro exercicio, sem lista.
+
+O botao "Gerar treino" inicia o mesmo fluxo e desaparece enquanto ha treino
+ativo. Se ja existe sessao em andamento, o bot retoma o exercicio pendente.
+Toque em RPE ≤7, 8, 9 ou ≥10 para registrar a carga total indicada e avancar.
+Os extremos sao armazenados como 7 e 10; nao ha botao sem RPE. A confirmacao
+substitui os botoes do exercicio concluido. No fim, o resumo inclui horarios,
+duracao, volume e comparacoes, e o teclado "Gerar treino" reaparece.
+Use `/ajuda` sem sessao ativa para exibir esse teclado ou `/status` para
+recuperar os botoes do exercicio atual. Sem carga alvo, informe a primeira
+carga manualmente; entradas numericas continuam disponiveis.
+
+O exercicio atual separa nome, instrucoes e equipamento com linhas em branco.
+Anilhas totais, series/repeticoes e descanso aparecem em destaque; barra e
+carga total ficam abaixo. A carga enviada ao bot continua sendo a carga total.
 
 `/prever` usa a mesma montagem de treino, mas nao cria `training_sessions`, nao
 cria `training_logs` e nao escreve `session.json`.
@@ -433,7 +447,7 @@ O banco fica em `data/limulus.db`. O schema e migrado por
 6. semeia grupos musculares padrao;
 7. semeia o plano de treino padrao quando necessario.
 
-Versao atual: `SCHEMA_VERSION = 12`.
+Versao atual: `SCHEMA_VERSION = 13`.
 
 Tabelas principais:
 
@@ -468,8 +482,9 @@ Colunas importantes:
 - `waist_measurements`: `circumference_cm`, `recorded_at`, `source`.
 - `body_profile`: `height_cm`, `age_years`, `updated_at`.
 
-Nao assumir colunas que nao existem, como `started_at`, `completed_at`,
-`plan_name`, `exercise`, `logged_at`, `weight`, `date` em `body_weights`, ou
+`training_sessions` inclui `started_at` e `completed_at` desde o schema 13.
+Nao assumir colunas que nao existem, como `plan_name`, `exercise`, `logged_at`,
+`weight`, `date` em `body_weights`, ou
 `age` em `body_profile`.
 
 Indices relevantes:
