@@ -21,6 +21,7 @@ EXPORT_TABLES = (
     "training_plan_exercises",
     "training_sessions",
     "training_logs",
+    "training_buttons",
     "foods",
     "diet_targets",
     "diet_entries",

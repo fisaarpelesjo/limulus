@@ -1,13 +1,19 @@
 """Operacoes SQLite para os dados do Limulus."""
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from itertools import groupby
 from pathlib import Path
+from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DB_PATH = DATA_DIR / "limulus.db"
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
+
+
+def agora_brasilia():
+    return datetime.now(timezone(timedelta(hours=-3)))
+
 
 DEFAULT_EXERCISES = [
     {"name": "Agachamento com barra nas costas", "sets": 3, "reps": 5},
@@ -392,6 +398,20 @@ SCHEMA_V12_STATEMENTS = (
     """,
 )
 
+SCHEMA_V13_STATEMENTS = (
+    "ALTER TABLE training_sessions ADD COLUMN started_at TEXT",
+    "ALTER TABLE training_sessions ADD COLUMN completed_at TEXT",
+    """
+    CREATE TABLE training_buttons (
+        token TEXT PRIMARY KEY,
+        log_id INTEGER NOT NULL REFERENCES training_logs(id),
+        weight REAL NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1
+    )
+    """,
+    "CREATE INDEX idx_training_buttons_log ON training_buttons(log_id)",
+)
+
 MIGRATIONS = {
     1: SCHEMA_V1_STATEMENTS,
     2: SCHEMA_V2_STATEMENTS,
@@ -405,6 +425,7 @@ MIGRATIONS = {
     10: SCHEMA_V10_STATEMENTS,
     11: SCHEMA_V11_STATEMENTS,
     12: SCHEMA_V12_STATEMENTS,
+    13: SCHEMA_V13_STATEMENTS,
 }
 
 
@@ -885,8 +906,8 @@ def create_session(date_iso, training_type="TREINO"):
     init_db()
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO training_sessions (date, training_type) VALUES (?, ?)",
-            (date_iso, training_type),
+            "INSERT INTO training_sessions (date, training_type, started_at) VALUES (?, ?, ?)",
+            (date_iso, training_type, agora_brasilia().isoformat()),
         )
         conn.commit()
         return cur.lastrowid
@@ -915,7 +936,65 @@ def update_log_weight(log_id, weight, rpe=None):
                 log_id,
             ),
         )
+        conn.execute("UPDATE training_buttons SET active=0 WHERE log_id=?", (log_id,))
+        session_id = conn.execute("SELECT session_id FROM training_logs WHERE id=?", (log_id,)).fetchone()
+        if session_id:
+            _atualizar_fim(conn, session_id[0])
         conn.commit()
+
+
+def _atualizar_fim(conn, session_id):
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM training_logs WHERE session_id=? AND weight IS NULL", (session_id,)
+    ).fetchone()[0]
+    if pending:
+        conn.execute("UPDATE training_sessions SET completed_at=NULL WHERE id=?", (session_id,))
+    else:
+        conn.execute(
+            "UPDATE training_sessions SET completed_at=COALESCE(completed_at, ?) WHERE id=?",
+            (agora_brasilia().isoformat(), session_id),
+        )
+
+
+def criar_botoes_rpe(log_id, weight):
+    """Vincula o clique à carga exibida, inclusive após reiniciar o bot."""
+    token = uuid4().hex
+    with _connect() as conn:
+        conn.execute("INSERT INTO training_buttons (token, log_id, weight) VALUES (?, ?, ?)",
+                     (token, log_id, float(weight)))
+    return token
+
+
+def registrar_rpe_botao(token, rpe):
+    """Consome uma ação uma única vez e somente no próximo exercício pendente."""
+    if rpe not in (7, 8, 9, 10):
+        return None
+    with _connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT b.log_id, b.weight, l.session_id FROM training_buttons b "
+            "JOIN training_logs l ON l.id=b.log_id "
+            "WHERE b.token=? AND b.active=1 AND l.weight IS NULL", (token,)
+        ).fetchone()
+        if row is None:
+            return None
+        latest = conn.execute("SELECT MAX(id) FROM training_sessions").fetchone()[0]
+        next_log = conn.execute(
+            "SELECT id FROM training_logs WHERE session_id=? AND weight IS NULL ORDER BY sort_order, id LIMIT 1",
+            (row['session_id'],),
+        ).fetchone()
+        if row['session_id'] != latest or not next_log or next_log[0] != row['log_id']:
+            return None
+        conn.execute("UPDATE training_logs SET weight=?, rpe=? WHERE id=?", (row['weight'], rpe, row['log_id']))
+        conn.execute("UPDATE training_buttons SET active=0 WHERE log_id=?", (row['log_id'],))
+        _atualizar_fim(conn, row['session_id'])
+        return dict(row)
+
+
+def get_session_timing(session_id):
+    with _connect() as conn:
+        row = conn.execute("SELECT started_at, completed_at FROM training_sessions WHERE id=?", (session_id,)).fetchone()
+        return dict(row) if row else {}
 
 
 def get_last_weights():
@@ -990,7 +1069,8 @@ def get_latest_incomplete_session():
             """
             SELECT s.id, s.date, s.training_type
             FROM training_sessions s
-            WHERE EXISTS (
+            WHERE s.id = (SELECT MAX(id) FROM training_sessions)
+              AND EXISTS (
                 SELECT 1 FROM training_logs l WHERE l.session_id = s.id
             )
               AND EXISTS (
@@ -1065,6 +1145,7 @@ def is_session_incomplete(session_id, log_ids):
                 SUM(CASE WHEN weight IS NULL THEN 1 ELSE 0 END) AS pending
             FROM training_logs
             WHERE session_id = ? AND id IN ({placeholders})
+              AND session_id = (SELECT MAX(id) FROM training_sessions)
             """,
             [session_id, *log_ids],
         ).fetchone()
