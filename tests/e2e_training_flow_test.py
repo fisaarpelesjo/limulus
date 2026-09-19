@@ -51,7 +51,7 @@ def main():
             db_ops.DB_PATH = test_db
             ods_ops.SESSION_FILE = test_session
             telegram_poller.SESSION_FILE = test_session
-            telegram_poller.send = sent_messages.append
+            telegram_poller.send = lambda text, **kwargs: sent_messages.append(text)
 
             telegram_poller.handle_preview()
             assert test_db.exists(), "Preview should initialize the database for exercise lookup."
@@ -93,13 +93,11 @@ def main():
             assert rosca_punho["reps"] == 12
             assert rosca_punho["target_weight"] == 11.0
             assert rosca_punho["rest_interval"] == "2 min"
-            assert "descanso: 4 min" in sent_messages[-3]
-            assert "<b>Supino fechado</b>" not in sent_messages[-3]
-            assert "<pre>" not in sent_messages[-3]
-            assert "Sessao de treino gerada." in sent_messages[-2]
-            assert "<b>Agora faca:</b>" in sent_messages[-1]
+            assert "Descanso: <b>4 min</b>" in sent_messages[-1]
+            assert "Sessão iniciada" in sent_messages[-2]
+            assert "Carga alvo ainda não definida." in sent_messages[-1]
             assert (
-                "▶ <b>Agachamento com barra nas costas</b> (3x5)"
+                "<b>AGACHAMENTO COM BARRA NAS COSTAS</b>\n\nSéries: <b>3</b>"
                 in sent_messages[-1]
             )
 
@@ -121,7 +119,7 @@ def main():
             first_log = _fetch_log(test_db, first_log_id)
             assert first_log["weight"] == 80.0
             assert first_log["rpe"] == 8.0
-            assert "80.0kg RPE 8" in sent_messages[-1]
+            assert "80.0kg RPE 8" in sent_messages[-2]
 
             test_session.unlink()
             recovered_session = telegram_poller.load_session()
@@ -133,31 +131,34 @@ def main():
             recovered_corrupt = telegram_poller.load_session()
             assert recovered_corrupt["session_id"] == session["session_id"]
 
+            novos, novo_id = ods_ops.generate_training()
+            ods_ops.write_session(novos, novo_id)
             telegram_poller.handle_generate()
             progressed_session = json.loads(test_session.read_text(encoding="utf-8"))
             progressed_first = progressed_session["exercises"][0]
             assert progressed_first["target_weight"] == 82.0
-            assert "82" in sent_messages[-3]
             assert "82" in sent_messages[-1]
-            assert "descanso: 4 min" in sent_messages[-3]
-            assert "descanso 4 min" in sent_messages[-1]
+            assert "Descanso: <b>4 min</b>" in sent_messages[-1]
+            assert "Anilhas: <b>71 kg</b>" in sent_messages[-1]
 
             telegram_poller.handle("/status", session)
-            assert "Treino" in sent_messages[-1]
-            assert f"1/{total_exercises}" in sent_messages[-1]
-            assert "Peso atual: 118,5 kg" in sent_messages[-1]
+            assert "Treino" in sent_messages[-2]
+            assert f"1/{total_exercises}" in sent_messages[-2]
+            assert "Peso atual: 118,5 kg" in sent_messages[-2]
 
             telegram_poller.handle("/desfazer", session)
             undone_log = _fetch_log(test_db, first_log_id)
             assert undone_log["weight"] is None
             assert undone_log["rpe"] is None
-            assert "Desfeito" in sent_messages[-1]
+            assert "Desfeito" in sent_messages[-2]
 
             telegram_poller.handle("80,5", session)
             relogged = _fetch_log(test_db, first_log_id)
             assert relogged["weight"] == 80.5
             assert relogged["rpe"] is None
 
+            novos, novo_id = ods_ops.generate_training()
+            ods_ops.write_session(novos, novo_id)
             telegram_poller.handle_generate()
             maintained_session = json.loads(test_session.read_text(encoding="utf-8"))
             maintained_first = maintained_session["exercises"][0]
@@ -169,10 +170,13 @@ def main():
             assert ods_ops.format_loading_note("Supino reto (barra)", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             assert ods_ops.format_loading_note("Remada curvada (barra)", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             triceps = {"name": "Tríceps testa", "sets": 3, "reps": 8, "target_weight": 18.0}
-            assert "barra W 6kg + 12kg de anilhas" in telegram_poller._format_current_exercise(triceps)
+            assert "Anilhas: <b>12 kg</b>" in telegram_poller._format_current_exercise(triceps)
+            assert "Barra: W · 6 kg" in telegram_poller._format_current_exercise(triceps)
             assert "barra W" not in telegram_poller._format_training_msg([triceps])
 
             telegram_poller.handle("80.5 10", maintained_session)
+            novos, novo_id = ods_ops.generate_training()
+            ods_ops.write_session(novos, novo_id)
             telegram_poller.handle_generate()
             reduced_session = json.loads(test_session.read_text(encoding="utf-8"))
             reduced_first = reduced_session["exercises"][0]

@@ -97,7 +97,7 @@ def main():
             db_ops.DB_PATH = test_db
             ods_ops.SESSION_FILE = test_session
             telegram_poller.SESSION_FILE = test_session
-            telegram_poller.send = mensagens.append
+            telegram_poller.send = lambda text, **kwargs: mensagens.append(text)
 
             db_ops.init_db()
             conn = sqlite3.connect(test_db)
@@ -371,9 +371,8 @@ def main():
             assert "Formato:" in mensagens[-1]
 
             telegram_poller.handle("40 9", session)
-            assert "Treino completo." in mensagens[-1]
-            assert "Resumo da sessao" in mensagens[-1]
-            assert "Volume: <b>600 kg</b>" in mensagens[-1]
+            assert "TREINO CONCLUÍDO" in mensagens[-1]
+            assert "Volume total: <b>600 kg</b>" in mensagens[-1]
 
             telegram_poller.handle("42 8", session)
             assert mensagens[-1] == "O treino ja esta completo. Use /status."
@@ -382,7 +381,7 @@ def main():
             assert "Treino completo. 1/1" in mensagens[-1]
 
             telegram_poller.handle("/desfazer", session)
-            assert "Desfeito" in mensagens[-1]
+            assert "Desfeito" in mensagens[-2]
             assert db_ops.count_filled([log_id]) == 0
 
             telegram_poller.handle("40 9", session)

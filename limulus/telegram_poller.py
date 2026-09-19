@@ -2,6 +2,7 @@ import requests
 import json
 import logging
 import time
+from html import escape
 from datetime import datetime
 from pathlib import Path
 
@@ -52,13 +53,16 @@ TOKEN = read_token()
 API = f"https://api.telegram.org/bot{TOKEN}"
 
 
-def send(text):
+def send(text, reply_markup=None):
+    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     attempts = len(SEND_RETRY_DELAYS) + 1
     for attempt in range(1, attempts + 1):
         try:
             response = requests.post(
                 f"{API}/sendMessage",
-                json={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"},
+                json=payload,
                 timeout=10,
             )
             if response.status_code in (401, 404):
@@ -85,6 +89,7 @@ def send(text):
 
 
 def load_session():
+    db_ops.init_db()
     session = None
     if SESSION_FILE.exists():
         try:
@@ -109,7 +114,8 @@ def get_updates(offset=0):
     try:
         r = requests.get(
             f"{API}/getUpdates",
-            params={"offset": offset, "timeout": 3},
+            params={"offset": offset, "timeout": 3,
+                    "allowed_updates": json.dumps(["message", "callback_query"])},
             timeout=10,
         )
         if r.status_code in (401, 404):
@@ -173,17 +179,29 @@ def _display_exercise_name(name):
 
 def _format_current_exercise(ex):
     display_name = _display_exercise_name(ex["name"])
-    msg = (
-        f"▶ <b>{display_name}</b> ({ex['sets']}x{ex['reps']})"
-        f"{_format_target_suffix(ex)} - descanso {ex.get('rest_interval', '2 min')}"
+    target = ex.get("target_weight")
+    equipment = ods_ops.LOAD_EQUIPMENT.get(ex["name"])
+    header = f"<b>{escape(display_name.upper())}</b>"
+    body = []
+    if equipment and target is not None:
+        plates = max(float(target) - equipment["weight"], 0.0)
+        body.append(f"Anilhas: <b>{_format_weight(plates)} kg</b>")
+    body.extend([
+        f"Séries: <b>{ex['sets']}</b>",
+        f"Repetições: <b>{ex['reps']}</b>",
+        f"Descanso: <b>{escape(ex.get('rest_interval', '2 min'))}</b>",
+    ])
+    footer = []
+    if equipment:
+        bar_name = equipment['name'].replace('barra reta ', '').removeprefix('barra ')
+        footer.append(
+            f"<i>Barra: {escape(bar_name)} · {_format_weight(equipment['weight'])} kg</i>"
+        )
+    footer.append(
+        f"<i>{'Total com barra' if equipment else 'Carga total'}: {_format_weight(target)} kg</i>"
+        if target is not None else "Carga alvo ainda não definida. Envie a carga total para este exercício."
     )
-    loading_note = ex.get("loading_note") or ods_ops.format_loading_note(
-        ex["name"],
-        ex.get("target_weight"),
-    )
-    if loading_note:
-        msg += f"\n   {loading_note}"
-    return msg
+    return "\n\n".join([header, "\n".join(body), "\n".join(footer)])
 
 
 def _format_exercise_line(idx, ex):
@@ -197,7 +215,7 @@ def _format_exercise_line(idx, ex):
 
 
 def _format_training_msg(exercises):
-    lines = ["<b>Treino</b>\n"]
+    lines = [f"<b>Treino de hoje — {len(exercises)} exercícios</b>"]
     lines.extend(_format_exercise_line(idx, ex) for idx, ex in enumerate(exercises, start=1))
     return "\n\n".join(lines)
 
@@ -232,21 +250,21 @@ def _format_training_summary(session_id):
         return "Resumo indisponivel."
 
     lines = [
-        "<b>Resumo da sessao</b>",
-        f"Volume: <b>{summary['volume']:,.0f} kg</b>".replace(",", "."),
+        f"Volume total: <b>{summary['volume']:,.0f} kg</b>".replace(",", "."),
     ]
     if summary["rpe_average"] is not None:
-        lines.append(f"RPE medio: <b>{summary['rpe_average']:.1f}</b>".replace(".", ","))
+        lines.append(f"RPE médio: <b>{summary['rpe_average']:.1f}</b>".replace(".", ","))
     if summary["volume_delta"] is not None:
         delta = summary["volume_delta"]
         signal = "+" if delta > 0 else ""
+        lines.append("\n<b>Comparação com o treino anterior</b>")
         lines.append(
             f"Volume vs. sessao anterior: <b>{signal}{delta:,.0f} kg</b>".replace(
                 ",", "."
             )
         )
     if summary["increases"]:
-        lines.append(f"Aumentos: {_format_summary_names(summary['increases'])}")
+        lines.append(f"Aumentos de carga: {len(summary['increases'])} exercícios — {_format_summary_names(summary['increases'])}")
     if summary["reductions"]:
         lines.append(f"Reducoes: {_format_summary_names(summary['reductions'])}")
     if summary["consolidations"]:
@@ -259,7 +277,7 @@ def _format_training_summary(session_id):
             f"{_format_summary_names(summary['maintained_rpe9'])}"
         )
     if summary["records"]:
-        lines.append(f"Recordes: {_format_summary_names(summary['records'])}")
+        lines.append(f"Recordes: {len(summary['records'])} — {_format_summary_names(summary['records'])}")
     return "\n".join(lines)
 
 
@@ -280,7 +298,92 @@ def _format_exercises_msg(exercises):
     return "".join(lines)
 
 
+KEYBOARD_START = {
+    "keyboard": [[{"text": "Gerar treino"}]],
+    "resize_keyboard": True,
+    "is_persistent": True,
+}
+
+
+def telegram_action(method, payload):
+    """Executa ações auxiliares sem expor URL ou token nos erros."""
+    try:
+        response = requests.post(f"{API}/{method}", json=payload, timeout=10)
+        return response.status_code == 200 and response.json().get("ok", False)
+    except (requests.RequestException, ValueError):
+        LOGGER.warning("Falha na ação Telegram metodo=%s", method)
+        return False
+
+
+def send_current_exercise(ex):
+    markup = None
+    target = ex.get("target_weight")
+    if target is not None and target > 0:
+        token = db_ops.criar_botoes_rpe(ex['log_id'], target)
+        markup = {"inline_keyboard": [[
+            {"text": label, "callback_data": f"rpe:{token}:{value}"}
+            for label, value in [("RPE ≤7", 7), ("RPE 8", 8), ("RPE 9", 9), ("RPE ≥10", 10)]
+        ]]}
+    send(_format_current_exercise(ex), reply_markup=markup)
+
+
+def send_completion(session):
+    timing = db_ops.get_session_timing(session['session_id'])
+    lines = ["<b>TREINO CONCLUÍDO</b>"]
+    start = datetime.fromisoformat(timing['started_at']) if timing.get('started_at') else None
+    end = datetime.fromisoformat(timing['completed_at']) if timing.get('completed_at') else None
+    if start:
+        lines.extend([f"Data: <b>{start:%d/%m/%Y}</b>", f"Início: <b>{start:%H:%M}</b>"])
+    if end:
+        lines.append(f"Fim: <b>{end:%d/%m/%Y %H:%M}</b>")
+    if start and end:
+        minutes = max(0, int((end - start).total_seconds() // 60))
+        lines.append(f"Duração: <b>{minutes // 60}h{minutes % 60:02d}</b>")
+    total = len(session['exercises'])
+    lines.extend(["", f"Exercícios: <b>{total}/{total}</b>", "", _format_training_summary(session['session_id'])])
+    send("\n".join(lines), reply_markup=KEYBOARD_START)
+
+
+def handle_rpe_callback(query):
+    message = query.get('message', {})
+    if str(message.get('chat', {}).get('id', '')) != CHAT_ID or str(query.get('from', {}).get('id', '')) != CHAT_ID:
+        return
+    parts = query.get('data', '').split(':')
+    if len(parts) != 3 or parts[0] != 'rpe' or parts[2] not in {'7', '8', '9', '10'}:
+        telegram_action('answerCallbackQuery', {'callback_query_id': query['id'], 'text': 'Botão de demonstração ou inválido.'})
+        return
+    session = load_session()
+    result = db_ops.registrar_rpe_botao(parts[1], int(parts[2])) if session else None
+    telegram_action('answerCallbackQuery', {
+        'callback_query_id': query['id'],
+        'text': 'Registrado!' if result else 'Este botão já foi usado ou não é do exercício atual. Use /status.',
+    })
+    if not result:
+        return
+    ex = next(ex for ex in session['exercises'] if ex['log_id'] == result['log_id'])
+    ex = dict(ex, target_weight=result['weight'])
+    confirmation = f"✓ {_format_weight(result['weight'])} kg · RPE {parts[2]} registrado"
+    edited = telegram_action('editMessageText', {
+        'chat_id': CHAT_ID, 'message_id': message['message_id'], 'parse_mode': 'HTML',
+        'text': _format_current_exercise(ex) + '\n\n' + confirmation,
+        'reply_markup': {'inline_keyboard': []},
+    })
+    if not edited:
+        send(confirmation)
+    filled = db_ops.count_filled([ex['log_id'] for ex in session['exercises']])
+    if filled == len(session['exercises']):
+        send_completion(session)
+    else:
+        send_current_exercise(session['exercises'][filled])
+
+
 def handle_generate():
+    session = load_session()
+    if session:
+        filled = db_ops.count_filled([ex['log_id'] for ex in session['exercises']])
+        send("Treino em andamento. Continue pelo exercício abaixo.", reply_markup={"remove_keyboard": True})
+        send_current_exercise(session['exercises'][filled])
+        return
     try:
         exercises, session_id = ods_ops.generate_training()
     except Exception as e:
@@ -293,11 +396,18 @@ def handle_generate():
 
     ods_ops.write_session(exercises, session_id)
 
-    msg = _format_training_msg(exercises)
-    send(msg)
-    send("Sessao de treino gerada. Envie <code>carga rpe</code> para cada exercicio.")
+    if not exercises:
+        send("O plano não tem exercícios. Consulte /planos.", reply_markup=KEYBOARD_START)
+        return
+    start = datetime.fromisoformat(db_ops.get_session_timing(session_id)['started_at'])
+    send(
+        f"<b>Sessão iniciada</b>\nData: <b>{start:%d/%m/%Y}</b>\n"
+        f"Horário: <b>{start:%H:%M}</b> (Brasília)\n\n"
+        "Ao terminar cada exercício, toque no RPE para registrar a carga indicada.",
+        reply_markup={"remove_keyboard": True},
+    )
     if exercises:
-        send(f"<b>Agora faca:</b>\n{_format_current_exercise(exercises[0])}")
+        send_current_exercise(exercises[0])
 
 
 def handle_preview():
@@ -635,7 +745,7 @@ def handle(text, session):
             else ""
         )
         if filled >= total:
-            send(f"Treino completo. {total}/{total} ✓{weight_line}")
+            send(f"Treino completo. {total}/{total} ✓{weight_line}", reply_markup=KEYBOARD_START)
         else:
             ex = exercises[filled]
             done = "\n".join(
@@ -645,9 +755,9 @@ def handle(text, session):
             msg = f"Treino — {filled}/{total}\n"
             if done:
                 msg += done + "\n"
-            msg += _format_current_exercise(ex)
             msg += weight_line
-            send(msg)
+            send(msg, reply_markup={"remove_keyboard": True})
+            send_current_exercise(ex)
         return
 
     if text.lower() == "/desfazer":
@@ -656,7 +766,8 @@ def handle(text, session):
             return
         last_ex = exercises[filled - 1]
         db_ops.update_log_weight(last_ex["log_id"], None, None)
-        send(f"↩ Desfeito: <b>{_display_exercise_name(last_ex['name'])}</b>")
+        send(f"↩ Desfeito: <b>{_display_exercise_name(last_ex['name'])}</b>", reply_markup={"remove_keyboard": True})
+        send_current_exercise(last_ex)
         return
 
     if filled >= total:
@@ -676,26 +787,14 @@ def handle(text, session):
     new_filled = filled + 1
 
     rpe_str = f" RPE {rpe}" if rpe is not None else ""
+    send(
+        f"<b>{escape(_display_exercise_name(ex['name']))}</b> ✓ {weight}kg{rpe_str} ({new_filled}/{total})"
+    )
     if new_filled >= total:
-        try:
-            summary = _format_training_summary(session.get("session_id"))
-        except Exception as exc:
-            LOGGER.error(
-                "Falha ao gerar resumo session_id=%s tipo=%s",
-                session.get("session_id"),
-                type(exc).__name__,
-            )
-            summary = "Resumo indisponivel. Consulte o terminal."
-        send(
-            f"<b>{_display_exercise_name(ex['name'])}</b> ✓ {weight}kg{rpe_str} ({new_filled}/{total})\n\n"
-            f"Treino completo.\n\n{summary}"
-        )
+        send_completion(session)
     else:
         nxt = exercises[new_filled]
-        send(
-            f"<b>{_display_exercise_name(ex['name'])}</b> ✓ {weight}kg{rpe_str} ({new_filled}/{total})\n"
-            f"{_format_current_exercise(nxt)}"
-        )
+        send_current_exercise(nxt)
 
 
 def main():
@@ -728,6 +827,13 @@ def main():
 
             for update in updates:
                 offset = update["update_id"] + 1
+                if 'callback_query' in update:
+                    try:
+                        handle_rpe_callback(update['callback_query'])
+                    except Exception as exc:
+                        LOGGER.error("Falha no clique RPE tipo=%s", type(exc).__name__)
+                        send("Não foi possível concluir a ação. Use /status para continuar.")
+                    continue
                 msg = update.get("message", {})
                 chat_id = str(msg.get("chat", {}).get("id", ""))
                 text = msg.get("text", "")
@@ -742,7 +848,7 @@ def main():
                 if lower == "/ajuda":
                     send(
                         "<b>Limulus — Comandos</b>\n\n"
-                        "/gerar — cria uma sessao de treino\n"
+                        "/gerar — inicia ou retoma o treino\n"
                         "/prever — mostra uma previa sem salvar\n"
                         "/treinob — mostra o treino B de garagem\n"
                         "/exercicios — lista os exercicios atuais\n"
@@ -770,10 +876,14 @@ def main():
                         "/como &lt;tecnica&gt; — o essencial (ex: /como chute baixo)\n"
                         "/como &lt;tecnica&gt; tudo — passo a passo completo\n"
                         "<i>semana opcional: /mtterca 3</i>\n\n"
-                        "<b>Registrar carga:</b>\n"
+                        "<b>Registrar treino:</b> toque no RPE abaixo do exercício.\n"
+                        "O botão usa a carga total indicada.\n\n"
+                        "<b>Registro manual, se necessário:</b>\n"
                         "<code>80</code> — somente carga\n"
                         "<code>80 8</code> — carga + RPE"
                     )
+                    if load_session() is None:
+                        send("Toque abaixo para iniciar.", reply_markup=KEYBOARD_START)
                     continue
 
                 if lower == "/exercicios":
@@ -859,8 +969,12 @@ def main():
                     handle_como(text)
                     continue
 
-                if lower == "/gerar":
-                    handle_generate()
+                if lower in {"/gerar", "gerar treino"}:
+                    try:
+                        handle_generate()
+                    except Exception as exc:
+                        LOGGER.error("Falha ao iniciar treino tipo=%s", type(exc).__name__)
+                        send("Não foi possível iniciar ou retomar o treino. Use /status para conferir a sessão.")
                     continue
 
                 if lower == "/prever":
@@ -887,7 +1001,7 @@ def main():
                     continue
                 if session is None:
                     LOGGER.info("Comando sem sessao ativa comando=%s", command)
-                    send("Nenhuma sessao ativa. Use /gerar.")
+                    send("Nenhuma sessão ativa. Toque em Gerar treino.", reply_markup=KEYBOARD_START)
                     continue
 
                 LOGGER.info(
