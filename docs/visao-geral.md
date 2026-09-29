@@ -17,7 +17,11 @@ Usuario envia /gerar
   -> bot cria uma sessao no SQLite
   -> bot cria um log por exercicio ativo
   -> bot escreve session.json
-  -> bot envia o treino em texto com alvo e descanso
+  -> bot envia o exercicio atual com a carga de cada serie e descanso
+
+Usuario conclui o ultimo exercicio de uma sessao do plano A ou B
+  -> bot envia o resumo
+  -> o outro plano (B ou A) passa a ser o ativo
 
 Usuario envia /prever
   -> bot monta o treino em texto com alvo e descanso
@@ -96,21 +100,31 @@ pendentes. Uma sessao completa nao e recuperada como ativa.
 
 ## Catalogo Atual
 
+Dois planos de hipertrofia e emagrecimento, cerca de 60 min, 3 treinos por
+semana alternando A/B automaticamente:
+
 ```text
-Agachamento com barra nas costas - 3x5
-Agachamento sumô com barra à frente - 3x10
-Supino inclinado (barra) - 3x8
-Remada curvada alta no peito (barra) - 3x10
-Rosca inversa (barra) - 3x8
+Plano A
+Agachamento com barra nas costas - 3x8
+Supino reto (barra) - 3x8
+Remada curvada (barra) - 3x10
+Desenvolvimento (barra em pé) - 3x10
+Tríceps testa - 3x12
+Rosca inversa (barra) - 3x12
+
+Plano B
+Levantamento Terra Romeno - 3x8
+Supino inclinado (barra) - 3x10
+Remada curvada (barra) - 3x10
+Agachamento sumô com barra à frente - 3x12
+Remada curvada alta no peito (barra) - 3x12
 Rosca de punho atrás das costas (barra) - 3x12
 ```
 
-O agachamento com barra nas costas voltou a ser o primeiro exercicio para
-sessoes futuras, com a barra apoiada no trapezio/ombro. O agachamento sumô com
-barra à frente complementa o treino com foco principal nos adutores. O supino
-inclinado substitui o `Pullover (barra)` e a rosca martelo substitui `Rosca
-direta` para sessoes futuras. `Supino fechado (barra)` e `Remada alta (barra)`
-estao inativos; historico antigo permanece como historico.
+Cada exercicio usa piramide crescente (80% -> 90% -> 100% do alvo); o RPE vale
+para a ultima serie. O antigo plano de forca, com 11 exercicios, virou o plano
+`Forca`, inativo e selecionavel com `/plano Forca`. `Supino fechado (barra)` e
+`Remada alta (barra)` estao inativos; historico antigo permanece como historico.
 
 ## Idioma
 

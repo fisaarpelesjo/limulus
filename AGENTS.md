@@ -32,7 +32,9 @@ modulo padrao `sqlite3` ou helpers de `limulus/db_ops.py`. Nao depender
 do binario externo `sqlite3`, pois ele pode nao estar disponivel no PATH local.
 No schema atual, `training_sessions` usa `id`, `date` e `training_type`; nao
 assumir coluna `plan_name`. Desde o schema 13, `started_at` e `completed_at`
-existem e podem ser nulos em sessoes historicas. `training_logs`
+existem e podem ser nulos em sessoes historicas. Desde o schema 14,
+os planos sao `A` e `B` (rotacao automatica) e `Forca` (antigo `A`, inativo).
+`training_logs.weight` guarda a carga da serie de topo. `training_logs`
 usa `exercise_name` para o nome do exercicio, nao `exercise`, e nao possui
 `logged_at`; usar `session_id`, `sort_order` e `id` para ordenar logs.
 Em consultas via `python -c` no PowerShell, evitar metacaracteres como `|` dentro
@@ -153,23 +155,26 @@ completo, com a busca normalizando acento, espaco e alias em `muaythai.buscar_te
 Fluxo:
 
 O exercicio atual em `/gerar`, `/status` e no proximo exercicio usa blocos
-separados por linhas em branco: nome; anilhas totais, series/repeticoes e
-descanso com valores em negrito; barra e carga total em italico. Nao usar o
-prefixo "Comece por". Series e repeticoes ficam em linhas separadas.
+separados por linhas em branco: nome; uma linha por serie
+(`1ª série: **X kg** anilhas`, ou `carga` sem equipamento fixo), repeticoes e
+descanso com valores em negrito; barra, `Total com barra: 65 · 73 · 82 kg` e
+`RPE da última série` em italico. Nao ha linha unica de anilhas nem linha de
+series; `Séries: N` so aparece sem alvo. Nao usar o prefixo "Comece por".
+A lista de `/prever` mostra o alvo como `65→73→82kg`.
 
 1. `/gerar` e "Gerar treino" iniciam uma sessao ou retomam a atual. Enviam
    data/hora de Brasilia e o primeiro exercicio, sem a lista completa.
    O teclado de inicio some durante o treino e retorna ao concluir.
    Botoes RPE ≤7, 8, 9 e ≥10 registram a carga total exibida e avancam;
    os extremos sao armazenados como 7 e 10. Nao ha botao sem RPE.
-   Header em caixa alta; body com anilhas, series, repeticoes e descanso;
-   footer em italico com barra e total com barra. Apenas valores em negrito
-   no body. Sem alvo, pedir a primeira carga manualmente.
+   Header em caixa alta; body com uma linha por serie da piramide, repeticoes
+   e descanso; footer em italico com barra, total por serie e "RPE da última
+   série". Apenas valores em negrito no body. Sem alvo, pedir a primeira carga manualmente.
 2. O texto gerado mostra `alvo`, calculado pela ultima carga registrada e pelo RPE, e `descanso`.
 3. `/prever` mostra o mesmo formato sem criar sessao, logs ou `session.json`.
 4. `/treinob` mostra um Treino B de garagem sem criar sessao, logs ou
-   `session.json`; os pesos unicos sao calculados pelos alvos atuais do treino
-   principal, sem pedir nem registrar RPE.
+   `session.json`; os pesos unicos sao calculados pelos alvos de Terra Romeno
+   e Remada curvada lidos do historico, sem pedir nem registrar RPE.
 5. Entrada de carga e escrita diretamente no SQLite.
 6. `/desfazer` limpa o ultimo exercicio registrado.
 7. `session.json` e validado contra o SQLite ao ser carregado. Se estiver
@@ -179,7 +184,8 @@ prefixo "Comece por". Series e repeticoes ficam em linhas separadas.
    comparacao com sessao compativel, mudancas de carga, consolidacoes, cargas
    mantidas em RPE 9 e recordes.
 9. `/planos` lista modelos cadastrados e `/plano NOME` seleciona o plano usado
-   por `/gerar`, `/prever`, `/exercicios` e `/volume`.
+   por `/gerar`, `/prever`, `/exercicios` e `/volume`. Ao concluir uma sessao
+   do plano ativo A ou B, o bot ativa o outro automaticamente.
 10. `/dashboard` atualiza `temp/dashboard-treino.html` e responde com horario,
    ultima sessao, volume e RPE medio geral, sem expor caminho local.
 11. `/peso VALOR` registra o peso corporal com data e `/peso` consulta o valor
@@ -196,12 +202,18 @@ Funcoes importantes:
 - `generate_training()` cria uma sessao SQLite e retorna `(exercises, session_id)`.
 - `preview_training()` monta o treino sem persistir sessao, logs ou `session.json`.
 - `build_training_b()` monta o Treino B de garagem sem persistir sessao, logs ou
-  `session.json`, aplicando percentuais dos alvos atuais do treino principal.
+  `session.json`, aplicando percentuais aos alvos de Terra Romeno e Remada
+  curvada lidos direto do historico de cada exercicio.
 - `gerar_treino()` e alias de compatibilidade para scripts locais antigos.
 - `read_exercises()` le do SQLite.
 - `read_previous_weights()` retorna a carga mais recente por exercicio.
-- `read_previous_performance()` retorna carga e RPE mais recentes por exercicio.
-- `suggest_next_weight(previous_weight, previous_rpe=None)` calcula o alvo pela regra de RPE.
+- `read_previous_performance()` retorna carga, RPE e reps mais recentes por exercicio.
+- `suggest_next_weight(previous_weight, previous_rpe=None, previous_reps=None,
+  target_reps=None, exercise_name=None)` converte por reps quando elas mudam e
+  senao calcula o alvo pela regra de RPE.
+- `get_set_weights(exercise_name, target_weight, sets)` retorna a carga de cada
+  serie da piramide; `round_down_to_plates()` e `convert_weight_for_reps()`
+  apoiam o arredondamento e a conversao por 1RM estimado.
 - `get_rest_interval(exercise_name)` retorna o descanso sugerido entre series.
 - `format_loading_note(exercise_name, target_weight)` retorna observacao de montagem da carga quando houver equipamento fixo.
 - `write_session()` escreve `session.json`.
@@ -213,8 +225,25 @@ Regras importantes:
 - A sequencia ativa vem de `training_plan_exercises`; `TRAINING_EXERCISES` e
   `TREINO_EXERCISES` permanecem apenas como aliases legados.
 - Progressao por RPE: RPE 7 ou menor `+4 kg`, RPE 8 `+2 kg`, RPE 9 mantem, RPE 10 ou maior `-2 kg`, sem RPE mantem.
+- Piramide crescente: `get_set_weights(nome, alvo, series)` gera 80% -> 90% ->
+  100% do alvo; series intermediarias sao arredondadas para baixo em anilhas de
+  2 kg acima da barra (`round_down_to_plates`). A ultima serie e a de topo: o
+  RPE registrado se refere a ela e `training_logs.weight` grava a carga do topo.
+  A progressao por RPE se aplica ao alvo de topo.
+- Conversao por repeticoes: se as reps do ultimo log do exercicio diferem das
+  reps do plano, `suggest_next_weight` converte a carga pelo 1RM estimado
+  (Epley, `peso x (1 + reps/30)`) e arredonda para baixo em anilhas, ignorando
+  o delta de RPE nessa sessao. Exemplo: 61 kg x5 vira 55 kg para 3x8.
+- Retorno apos pausa: se o ultimo log do exercicio tem `RETURN_AFTER_DAYS`
+  (10) dias ou mais, o alvo volta com a ultima carga menos
+  `RETURN_REDUCTION_KG` (4 kg), sem somar a progressao por RPE e sem ficar
+  abaixo da barra; a conversao por reps, se houver, vem antes. A pausa conta a
+  partir de `training_sessions.date` do ultimo log ate a data da sessao nova
+  (ou da sessao recuperada), via `ods_ops.days_between()`.
 - Treino B de garagem: farmer walk usa 45% do Terra Romeno e remada leve com
-  barra usa 60% da remada curvada; o comando `/treinob` exibe peso unico
+  barra usa 60% da remada curvada, com alvos lidos do historico do exercicio
+  (`read_previous_performance` + `suggest_next_weight`), sem depender do plano
+  ativo; o comando `/treinob` exibe peso unico
   arredondado, 10 voltas fixas,
   montagem com barra reta 2,50 m de 9 kg para remada com barra e barra de 40 cm
   para farmer walk, e nao registra RPE.
@@ -231,9 +260,12 @@ Regras importantes:
   depois disso usam a progressao por RPE.
 - `target_weight` fica em `session.json`.
 - `rest_interval` fica em `session.json` e aparece em `/gerar`, `/status` e proximo exercicio.
-- `Supino reto back-off` e `Supino inclinado (barra)` usam descanso de 4 min.
-- `Rosca inversa (barra)` usa descanso de 3 min.
-- `Rosca de punho atrás das costas (barra)` usa 3x12, alvo inicial de 11 kg e descanso de 2 min.
+- Descansos (`REST_INTERVALS`): agachamento com barra nas costas, supino reto,
+  supino reto back-off e Terra Romeno 3 min; supino inclinado e remada curvada
+  2 min; desenvolvimento, remada curvada alta no peito e agachamento sumô 90 s;
+  triceps testa, rosca inversa, rosca de punho, pullover, rosca direta e rosca
+  martelo 60 s; demais 2 min.
+- `Rosca de punho atrás das costas (barra)` usa 3x12 e alvo inicial de 11 kg.
 - `loading_note` fica em `session.json` quando houver equipamento fixo e aparece apenas no exercicio atual/proximo, nao na lista `/exercicios`.
 - Nomes visiveis no bot e dashboard podem usar `ods_ops.get_display_name()` para
   ocultar qualificadores como `(barra)`, `(barra H)` e `(barra em pé)`. Nao
@@ -247,23 +279,30 @@ Regras importantes:
 - `Tríceps testa` e `Pullover (barra)` usam barra W de 6 kg; a observacao deve mostrar carga total como `barra W 6kg + Xkg de anilhas`.
 - `Rosca inversa (barra)` usa barra reta de 2,20 m e 11 kg; a observacao deve mostrar carga total como `barra reta 2,20 m 11kg + Xkg de anilhas`.
 - Manter `TREINO_EXERCISES` apenas como alias de compatibilidade.
-- O primeiro exercicio ativo e `Agachamento com barra nas costas` (`3x5`).
-- O segundo exercicio ativo e `Agachamento sumô com barra à frente` (`3x10`),
-  com foco principal nos adutores.
-- O quinto exercicio ativo e `Supino inclinado (barra)` (`3x8`), logo depois
-  de `Supino reto back-off`, substituindo `Pullover (barra)` para sessoes futuras.
-- O setimo exercicio ativo e `Remada curvada alta no peito (barra)` (`3x10`),
-  logo depois de `Remada curvada (barra)`.
-- O decimo exercicio ativo e `Rosca inversa (barra)` (`3x8`), substituindo `Rosca martelo (barra H)` para sessoes futuras.
+- Planos (schema 14), 3 treinos por semana alternando A/B, cerca de 60 min,
+  foco em hipertrofia e emagrecimento:
+  - `A`: `Agachamento com barra nas costas` 3x8, `Supino reto (barra)` 3x8,
+    `Remada curvada (barra)` 3x10, `Desenvolvimento (barra em pé)` 3x10,
+    `Tríceps testa` 3x12, `Rosca inversa (barra)` 3x12.
+  - `B`: `Levantamento Terra Romeno` 3x8, `Supino inclinado (barra)` 3x10,
+    `Remada curvada (barra)` 3x10, `Agachamento sumô com barra à frente` 3x12,
+    `Remada curvada alta no peito (barra)` 3x12, `Rosca de punho atrás das
+    costas (barra)` 3x12.
+  - `Forca`: antigo plano `A` de 11 exercicios com foco em forca, inativo e
+    disponivel via `/plano Forca`.
+- `DEFAULT_EXERCISES` em `db_ops` e o plano A e `PLAN_B_EXERCISES` e o plano B.
+- Ao concluir uma sessao cujo `training_type` e o plano ativo `A` ou `B`,
+  `db_ops._alternar_plano` ativa o outro (`PLAN_ROTATION`). Outros planos, como
+  `Forca`, nao alternam; `/plano NOME` continua trocando manualmente.
 - `Supino fechado (barra)` e `Remada alta (barra)` estao inativos para sessoes futuras.
-- Logs historicos de `Agachamento (barra)`, `Agachamento Zercher`, `Zercher squat`, `Pullover (barra)`, `Tríceps testa`, `Supino fechado (barra)`, `Remada alta (barra)` ou `Rosca martelo (barra H)` podem permanecer como historico.
+- Logs historicos de `Agachamento (barra)`, `Agachamento Zercher`, `Zercher squat`, `Supino fechado (barra)`, `Remada alta (barra)` ou `Rosca martelo (barra H)` podem permanecer como historico.
 
 ### `limulus/db_ops.py`
 
 Modulo SQLite para exercicios, logs de treino e dados de dieta.
 
 - Banco versionado: `data/limulus.db`.
-- Versao atual do esquema: `SCHEMA_VERSION = 13`.
+- Versao atual do esquema: `SCHEMA_VERSION = 14`.
 - `training_sessions.started_at` e `completed_at` guardam horarios ISO com
   UTC-03:00; historicos migrados ficam nulos. `training_buttons` vincula token
   ao log e carga exibida. Cliques sao atomicos e invalidam botoes do log.
@@ -275,8 +314,9 @@ Modulo SQLite para exercicios, logs de treino e dados de dieta.
 - Tabela principal de exercicios: `exercises` (`name`, `sets`, `reps`, `sort_order`, `active`).
 - `exercise_muscle_groups` relaciona exercicios a grupos principais e
   secundarios. `/volume` e dashboard usam essa tabela como fonte unica.
-- `training_plans` e `training_plan_exercises` armazenam modelos A/B ou outros
-  ciclos. Apenas um plano com exercicios fica ativo por vez.
+- `training_plans` e `training_plan_exercises` armazenam os planos A, B e
+  Forca. Apenas um plano com exercicios fica ativo por vez; A e B alternam ao
+  concluir a sessao (`PLAN_ROTATION`, `_alternar_plano`).
 - `body_weights` armazena o historico temporal de peso corporal.
 - `waist_measurements` armazena o historico temporal da circunferencia da cintura.
 - `body_profile` armazena altura e idade em um registro unico para os calculos
@@ -285,7 +325,7 @@ Modulo SQLite para exercicios, logs de treino e dados de dieta.
   colunas `weight` ou `date`. `body_profile` usa `height_cm` e `age_years`; nao
   assumir coluna `age`.
 - SQLite e a fonte da verdade para exercicios.
-- Mudancas de catalogo que devem valer para bancos novos tambem precisam atualizar `DEFAULT_EXERCISES`.
+- Mudancas de catalogo que devem valer para bancos novos tambem precisam atualizar `DEFAULT_EXERCISES` (plano A) ou `PLAN_B_EXERCISES` (plano B).
 
 ### `limulus/dashboard.py`
 
@@ -293,6 +333,8 @@ Dashboard local de volume de treino.
 
 - `carregar_dados()` le `training_sessions` e `training_logs` no SQLite.
 - O volume de cada linha e calculado como `sets x reps x weight`.
+  Com a piramide, o log guarda so a carga de topo, entao o volume fica
+  superestimado em cerca de 10%.
 - Apenas logs com carga preenchida (`weight IS NOT NULL` e maior que zero) entram no dashboard.
 - O HTML exibe uma pagina unica rolavel com indicadores de resumo, treino ativo
   do plano selecionado, grafico de evolucao do volume, mapa muscular anterior e posterior da ultima sessao,

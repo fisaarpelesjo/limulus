@@ -12,12 +12,31 @@ Ele usa long polling pela API HTTP do Telegram. Nao ha webhook nem servidor web.
 
 O teclado "Gerar treino" inicia ou retoma a sessao e desaparece enquanto ela
 esta ativa. Uma mensagem informa data/hora de Brasilia, seguida do exercicio
-atual, sem lista completa. O header e o nome em caixa alta; o body separa
-anilhas, series, repeticoes e descanso, com valores em negrito; o footer usa
-italico para barra e total com barra.
+atual, sem lista completa. O header e o nome em caixa alta; o body mostra uma
+linha por serie da piramide crescente, depois repeticoes e descanso, com
+valores em negrito; o footer usa italico para barra, total com barra por serie
+e `RPE da última série`. Exemplo com alvo de 82 kg na barra de 11 kg:
 
-Os quatro botoes RPE ≤7, 8, 9 e ≥10 registram a carga exibida (os extremos sao
-armazenados como 7 e 10). Nao ha botao sem RPE. A mensagem anterior recebe
+```text
+AGACHAMENTO COM BARRA NAS COSTAS
+
+1ª série: 54 kg anilhas
+2ª série: 62 kg anilhas
+3ª série: 71 kg anilhas
+Repetições: 8
+Descanso: 3 min
+
+Barra: barra reta 2,20 m · 11 kg
+Total com barra: 65 · 73 · 82 kg
+RPE da última série
+```
+
+Sem equipamento fixo, a linha usa `carga` em vez de `anilhas`. Nao ha linha
+unica de anilhas nem linha de series; `Séries: N` so aparece quando ainda nao
+ha alvo, junto do pedido da primeira carga.
+
+Os quatro botoes RPE ≤7, 8, 9 e ≥10 registram a carga de topo exibida (os
+extremos sao armazenados como 7 e 10); o RPE se refere a ultima serie. Nao ha botao sem RPE. A mensagem anterior recebe
 confirmacao e perde os botoes; em seguida aparece o proximo exercicio.
 O resumo final mostra inicio, fim, duracao e os indicadores da sessao, e
 restaura o teclado inicial. Horarios ausentes em sessoes antigas sao omitidos.
@@ -167,13 +186,15 @@ handle_generate()
   -> send_current_exercise(primeiro exercicio com botoes RPE)
 ```
 
-O primeiro exercicio gerado atualmente e `Agachamento com barra nas costas` (`3x5`).
-O segundo e `Agachamento sumô com barra à frente` (`3x10`), com foco principal
-nos adutores.
+O `/gerar` usa o plano ativo. Os planos `A` e `B` (6 exercicios cada, foco em
+hipertrofia e emagrecimento) alternam sozinhos: ao registrar o ultimo exercicio
+de uma sessao do plano ativo `A` ou `B`, o outro passa a ser o ativo. O plano
+`A` comeca por `Agachamento com barra nas costas` (`3x8`) e o `B` por
+`Levantamento Terra Romeno` (`3x8`). O plano `Forca` (antigo `A`) nao alterna.
 
-O texto enviado mostra apenas o exercicio atual com series, repeticoes, carga
-e descanso. A lista completa continua disponivel em `/prever`. Quando existe
-carga anterior para o exercicio, o alvo e
+O texto enviado mostra apenas o exercicio atual com a carga de cada serie,
+repeticoes e descanso. A lista completa continua disponivel em `/prever`.
+Quando existe carga anterior para o exercicio, o alvo da serie de topo e
 calculado pela ultima carga registrada e pelo RPE:
 
 ```text
@@ -195,6 +216,21 @@ de melhora na execucao.
 
 Exemplo: se o treino anterior registrou `40 8`, o proximo `/gerar` mostra
 `alvo: 42kg`. Se registrou `40 10`, o proximo `/gerar` mostra `alvo: 38kg`.
+
+Se as reps do ultimo log diferem das reps do plano atual, o alvo e convertido
+pelo 1RM estimado (Epley: `1RM = peso x (1 + reps/30)`) e arredondado para
+baixo em anilhas, sem aplicar o delta de RPE nessa sessao. Exemplo: 61 kg x5
+vira 55 kg para 3x8.
+
+Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
+(`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
+(`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
+barra. Se as reps mudaram, a conversao vem antes. Na sessao seguinte a
+progressao por RPE volta ao normal.
+
+As series seguem uma piramide crescente de 80% -> 90% -> 100% do alvo
+(`ods_ops.get_set_weights`), com as intermediarias arredondadas para baixo em
+anilhas de 2 kg. A carga gravada no log e a da serie de topo.
 
 `Rosca inversa (barra)` tem alvo inicial de 11 kg e `Supino inclinado (barra)`
 tem alvo inicial de 41 kg quando ainda nao houver historico proprio. Depois do
@@ -236,8 +272,8 @@ barra reta 2,20 m 11kg + 7kg de anilhas
 
 ## `/prever`
 
-Mostra o treino no mesmo formato de `/gerar`, com alvo e descanso, mas nao
-cria sessao real:
+Mostra o treino do plano ativo em lista, com a piramide do alvo (por exemplo
+`65→73→82kg`) e descanso, mas nao cria sessao real:
 
 ```text
 handle_preview()
@@ -265,8 +301,10 @@ handle_training_b()
   -> send(texto do treino B)
 ```
 
-O Treino B usa pesos unicos calculados pelos alvos atuais do treino principal,
-sem pedir nem registrar RPE:
+O Treino B usa pesos unicos calculados pelo alvo de cada exercicio de origem,
+lido direto do historico (`read_previous_performance` + `suggest_next_weight`),
+sem depender do plano ativo, ja que Terra Romeno e Remada curvada ficam em
+planos diferentes. Nao pede nem registra RPE:
 
 ```text
 Farmer walk ida e volta             -> 45% do Levantamento Terra Romeno
@@ -283,9 +321,11 @@ flexao e sombra de boxe ou corda sem corda usam peso corporal.
 Intervalos atuais:
 
 ```text
-Agachamento com barra nas costas, Supino reto principal, Supino reto back-off, Supino inclinado (barra), Desenvolvimento, Levantamento Terra Romeno: 4 min
-Remada curvada, Rosca inversa (barra): 3 min
-Acessorios restantes: 2 min
+Agachamento com barra nas costas, Supino reto, Supino reto back-off, Levantamento Terra Romeno: 3 min
+Supino inclinado (barra), Remada curvada (barra): 2 min
+Desenvolvimento, Remada curvada alta no peito, Agachamento sumô: 90 s
+Tríceps testa, Rosca inversa, Rosca de punho, Pullover, Rosca direta, Rosca martelo: 60 s
+Demais exercicios: 2 min
 ```
 
 ## `/exercicios`
@@ -328,6 +368,11 @@ O plano selecionado passa a ser usado por:
 
 A troca nao altera sessoes antigas nem uma sessao ja gerada. Novos planos sao
 cadastrados por `db_ops.replace_training_plan()`.
+
+Planos atuais: `A`, `B` e `Forca`. A e B alternam automaticamente ao concluir
+uma sessao do plano ativo (`db_ops.PLAN_ROTATION`); `Forca` e o antigo plano de
+11 exercicios, inativo, selecionavel com `/plano Forca`, e nao entra na
+rotacao.
 
 ## `/dashboard`
 
@@ -413,9 +458,9 @@ essa classificacao exige queda do RPE 9 para 8 ou menos com a mesma carga.
       "log_id": 1,
       "name": "Tríceps testa",
       "sets": 3,
-      "reps": 8,
+      "reps": 12,
       "target_weight": 18.0,
-      "rest_interval": "2 min",
+      "rest_interval": "60 s",
       "loading_note": "barra W 6kg + 12kg de anilhas"
     }
   ]

@@ -24,6 +24,21 @@ def _assert_progressao():
     assert ods_ops.suggest_next_weight(40, 11) == 38
     assert ods_ops.suggest_next_weight(40, None) == 40
     assert ods_ops.suggest_next_weight(None, 8) is None
+    # Mudanca de repeticoes converte a carga pelo 1RM estimado.
+    assert ods_ops.suggest_next_weight(61, 9, 5, 8, "Supino reto (barra)") == 55
+    assert ods_ops.suggest_next_weight(77, 8, 5, 8, "Agachamento com barra nas costas") == 69
+    assert ods_ops.suggest_next_weight(61, 8, 8, 8, "Supino reto (barra)") == 63
+    # Retorno apos pausa: ultima carga -4 kg, sem somar progressao por RPE.
+    assert ods_ops.days_between("2026-09-21", "2026-10-06") == 15
+    assert ods_ops.suggest_next_weight(81, 8, 8, 8, "Levantamento Terra Romeno", 15) == 77
+    assert ods_ops.suggest_next_weight(81, 8, 8, 8, "Levantamento Terra Romeno", 9) == 83
+    assert ods_ops.suggest_next_weight(61, 9, 5, 8, "Supino reto (barra)", 15) == 51
+    assert ods_ops.suggest_next_weight(13, 9, 12, 12, "Rosca inversa (barra)", 15) == 11
+    # Piramide crescente ate o alvo, arredondada em anilhas de 2 kg.
+    assert ods_ops.get_set_weights("Supino reto (barra)", 57, 3) == [45, 51, 57]
+    assert ods_ops.get_set_weights("Tríceps testa", 18, 3) == [14, 16, 18]
+    assert ods_ops.get_set_weights("Rosca inversa (barra)", 11, 3) == [11, 11, 11]
+    assert ods_ops.get_set_weights("Supino reto (barra)", None, 3) == []
 
 
 def _assert_equipamento_e_descanso():
@@ -34,14 +49,14 @@ def _assert_equipamento_e_descanso():
     assert ods_ops.get_display_name("Supino fechado (barra)") == "Supino fechado"
     assert ods_ops.get_display_name("Rosca inversa (barra)") == "Rosca inversa"
     assert ods_ops.get_initial_target_weight("Supino reto (barra)") is None
-    assert ods_ops.get_rest_interval("Agachamento com barra nas costas") == "4 min"
-    assert ods_ops.get_rest_interval("Remada curvada (barra)") == "3 min"
-    assert ods_ops.get_rest_interval("Desenvolvimento (barra em pé)") == "4 min"
-    assert ods_ops.get_rest_interval("Supino reto back-off") == "4 min"
-    assert ods_ops.get_rest_interval("Supino inclinado (barra)") == "4 min"
-    assert ods_ops.get_rest_interval("Rosca inversa (barra)") == "3 min"
-    assert ods_ops.get_rest_interval("Rosca de punho atrás das costas (barra)") == "2 min"
-    assert ods_ops.get_rest_interval("Tríceps testa") == "2 min"
+    assert ods_ops.get_rest_interval("Agachamento com barra nas costas") == "3 min"
+    assert ods_ops.get_rest_interval("Levantamento Terra Romeno") == "3 min"
+    assert ods_ops.get_rest_interval("Remada curvada (barra)") == "2 min"
+    assert ods_ops.get_rest_interval("Desenvolvimento (barra em pé)") == "90 s"
+    assert ods_ops.get_rest_interval("Supino inclinado (barra)") == "2 min"
+    assert ods_ops.get_rest_interval("Rosca inversa (barra)") == "60 s"
+    assert ods_ops.get_rest_interval("Rosca de punho atrás das costas (barra)") == "60 s"
+    assert ods_ops.get_rest_interval("Tríceps testa") == "60 s"
     assert ods_ops.get_rest_interval("Exercicio desconhecido") == "2 min"
     assert (
         ods_ops.format_loading_note("Tríceps testa", 18)
@@ -206,17 +221,17 @@ def main():
             assert plan_a["name"] == "A"
             assert len(plan_a["exercises"]) == len(active_exercises)
             assert plan_a["exercises"][1] == {
-                "name": "Agachamento sumô com barra à frente",
-                "sets": 3,
-                "reps": 10,
-            }
-            assert plan_a["exercises"][-2] == {
-                "name": "Rosca inversa (barra)",
+                "name": "Supino reto (barra)",
                 "sets": 3,
                 "reps": 8,
             }
+            assert plan_a["exercises"][-2] == {
+                "name": "Tríceps testa",
+                "sets": 3,
+                "reps": 12,
+            }
             assert plan_a["exercises"][-1] == {
-                "name": "Rosca de punho atrás das costas (barra)",
+                "name": "Rosca inversa (barra)",
                 "sets": 3,
                 "reps": 12,
             }
@@ -249,6 +264,8 @@ def main():
             ):
                 treino_a_log = db_ops.log_exercise(treino_a, name, 3, 8, sort_order)
                 db_ops.update_log_weight(treino_a_log, weight, rpe)
+            # Concluir uma sessao do plano A ativa o B na rotacao.
+            assert db_ops.get_active_training_plan()["name"] == "B"
 
             treino_b = ods_ops.build_training_b()
             treino_b_pesos = {
@@ -335,11 +352,11 @@ def main():
 
             telegram_poller.handle_exercises()
             assert "Lista de exercicios" in mensagens[-1]
-            assert "Agachamento com barra nas costas" in mensagens[-1]
+            assert "Supino reto" in mensagens[-1]
 
             telegram_poller.handle_volume()
             assert "Volume por musculo" in mensagens[-1]
-            assert "Quadriceps" in mensagens[-1]
+            assert "Peitoral" in mensagens[-1]
 
             session_id = db_ops.create_session("2026-06-09")
             log_id = db_ops.log_exercise(

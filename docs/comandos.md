@@ -10,13 +10,13 @@ Todos os comandos textuais devem ser enviados com `/`.
 | --- | --- |
 | `/gerar` ou botão `Gerar treino` | Inicia ou retoma a sessao, mostrando o exercicio atual com botoes de RPE. |
 | `/prever` | Mostra o proximo treino sem salvar sessao ou logs. |
-| `/treinob` | Mostra o Treino B de garagem com pesos calculados pelo treino principal. |
+| `/treinob` | Mostra o Treino B de garagem com pesos calculados pelo historico de Terra Romeno e Remada curvada. |
 | `/exercicios` | Lista os exercicios do plano ativo. |
 | `/aquecimento` | Mostra a sequencia de aquecimento. |
 | `/volume` | Mostra o volume por grupo muscular. |
 | `/dashboard` | Atualiza o dashboard HTML local. |
 | `/planos` | Lista os planos de treino cadastrados. |
-| `/plano NOME` | Seleciona o plano ativo. |
+| `/plano NOME` | Seleciona o plano ativo (`A`, `B` ou `Forca`). A e B tambem alternam sozinhos ao concluir a sessao. |
 | `/peso VALOR` | Registra o peso corporal em quilogramas. |
 | `/peso` | Mostra o peso atual, a variacao e as ultimas medicoes. |
 | `/cintura VALOR` | Registra a circunferencia da cintura em centimetros. |
@@ -25,7 +25,7 @@ Todos os comandos textuais devem ser enviados com `/`.
 | `/desfazer` | Remove a carga e o RPE do ultimo registro preenchido. |
 | `/ajuda` | Mostra a ajuda principal do bot. |
 | `80` | Registra 80 kg no proximo exercicio pendente. |
-| `80 8` | Registra 80 kg com RPE 8. |
+| `80 8` | Registra 80 kg com RPE 8 (carga e RPE da serie de topo). |
 
 Entradas numericas como `80` e `80 8` nao usam `/`, pois registram carga e RPE
 em vez de acionar um comando textual.

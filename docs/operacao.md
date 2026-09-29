@@ -7,8 +7,10 @@ Este documento explica como rodar, manter e depurar a Limulus.
 1. Inicie o bot.
 2. Abra o Telegram.
 3. Envie `/gerar`.
-4. Use `alvo` como carga sugerida e `descanso` como intervalo entre series.
-5. Envie cargas conforme terminar os exercicios.
+4. Siga a carga de cada serie (piramide 80% -> 90% -> 100% do alvo) e use
+   `descanso` como intervalo entre series.
+5. Ao terminar cada exercicio, toque no RPE da ultima serie (a de topo) ou
+   envie a carga total dela.
 6. Use `/status` para ver progresso.
 7. Use `/desfazer` se registrou algo errado.
 8. Pare o bot com `Ctrl+C`.
@@ -84,24 +86,27 @@ Use `/prever` quando quiser conferir formato, alvo e descanso sem iniciar uma
 sessao real.
 
 Use `/treinob` nos dias sem treino principal para receber o treino de garagem
-com 10 voltas e peso unico por exercicio. Ele calcula os pesos a partir dos alvos atuais do
-treino principal, mostra a montagem da carga e nao cria sessao, logs,
-`session.json` nem registros de RPE.
+com 10 voltas e peso unico por exercicio. Ele calcula os pesos a partir do
+historico de Terra Romeno e Remada curvada, sem depender do plano ativo, mostra
+a montagem da carga e nao cria sessao, logs, `session.json` nem registros de
+RPE.
 
 Ao registrar o ultimo exercicio, o bot envia automaticamente o resumo da sessao.
 Nao e necessario executar outro comando.
 
-Para trabalhar com modelos A/B:
+Planos de treino:
 
 ```text
 /planos
 /plano A
 /plano B
+/plano Forca
 ```
 
-O repositorio migra o treino atual como plano `A`. Um plano `B` so aparece
-depois de ser cadastrado no SQLite; nenhum treino alternativo e inventado
-automaticamente.
+Os planos `A` e `B` (hipertrofia e emagrecimento, cerca de 60 min, 3 treinos
+por semana) alternam sozinhos: ao concluir uma sessao do plano ativo, o outro
+passa a ser o ativo. `/plano NOME` troca manualmente. `Forca` e o antigo plano
+`A` de 11 exercicios com foco em forca; fica inativo e nao entra na rotacao.
 
 Para atualizar o dashboard pelo celular:
 
@@ -160,6 +165,11 @@ Hoje: 40 10
 Proximo /gerar: alvo 38 kg
 ```
 
+O alvo e a carga da ultima serie (topo); as anteriores usam cerca de 80% e 90%
+dele, arredondadas para baixo em anilhas de 2 kg. Se as repeticoes do plano
+mudaram desde o ultimo registro (por exemplo de 3x5 para 3x8), o alvo e
+convertido pelo 1RM estimado: 61 kg x5 vira 55 kg para 3x8.
+
 Se nao houver historico para o exercicio, o alvo aparece como `-`. Registre
 sempre a carga real feita; ela sera a base do proximo alvo.
 
@@ -169,9 +179,11 @@ O `/gerar` mostra descanso fixo sugerido por exercicio. Use esses tempos como
 base para preservar a qualidade tecnica:
 
 ```text
-Compostos pesados, Supino reto back-off e Supino inclinado (barra): 4 min
-Compostos medios e Rosca inversa (barra): 3 min
-Acessorios: 2 min
+Agachamento com barra nas costas, supino reto, back-off e terra romeno: 3 min
+Supino inclinado e remada curvada: 2 min
+Desenvolvimento, remada curvada alta no peito e agachamento sumô: 90 s
+Triceps testa, roscas e pullover: 60 s
+Demais exercicios: 2 min
 ```
 
 ## Arquivos Para Backup
@@ -262,16 +274,19 @@ Nao substituir a fonte da verdade SQLite por planilha.
 
 Catalogo atual:
 
-- `Agachamento com barra nas costas` e o primeiro exercicio e esta como `3x5`.
-- Ele usa a barra apoiada no trapezio/ombro.
-- `Agachamento sumô com barra à frente` e o segundo exercicio e esta como `3x10`.
-- `Remada curvada alta no peito (barra)` e o setimo exercicio e esta como `3x10`.
-- `Rosca inversa (barra)` e o decimo exercicio e esta como `3x8`.
-- `Rosca de punho atrás das costas (barra)` e o ultimo exercicio e esta como `3x12`.
-- Ela substitui `Rosca martelo (barra H)` em sessoes futuras para trabalhar os extensores do antebraco com a barra reta.
+- Plano `A`: `Agachamento com barra nas costas` 3x8, `Supino reto (barra)` 3x8,
+  `Remada curvada (barra)` 3x10, `Desenvolvimento (barra em pé)` 3x10,
+  `Tríceps testa` 3x12 e `Rosca inversa (barra)` 3x12.
+- Plano `B`: `Levantamento Terra Romeno` 3x8, `Supino inclinado (barra)` 3x10,
+  `Remada curvada (barra)` 3x10, `Agachamento sumô com barra à frente` 3x12,
+  `Remada curvada alta no peito (barra)` 3x12 e `Rosca de punho atrás das
+  costas (barra)` 3x12.
+- Plano `Forca`: antigo plano `A` de 11 exercicios, inativo.
+- O agachamento usa a barra apoiada no trapezio/ombro.
 - `Supino fechado (barra)` e `Remada alta (barra)` estao inativos para sessoes futuras.
 - Historico antigo pode continuar com nomes antigos ou inativos.
-- Se o catalogo mudar de novo, atualizar `data/limulus.db` e `limulus/db_ops.py`.
+- Se o catalogo mudar de novo, atualizar `data/limulus.db` e `limulus/db_ops.py`
+  (`DEFAULT_EXERCISES` para o plano A, `PLAN_B_EXERCISES` para o B).
 
 ## Problemas Comuns
 

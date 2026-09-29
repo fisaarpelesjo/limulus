@@ -2,7 +2,7 @@
 
 import json
 import math
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from . import db_ops
@@ -94,24 +94,35 @@ DISPLAY_NAMES = {
 }
 
 REST_INTERVALS = {
-    "Agachamento com barra nas costas": "4 min",
-    "Agachamento Zercher": "4 min",
-    "Supino reto (barra)": "4 min",
-    "Supino reto back-off": "4 min",
-    "Supino inclinado (barra)": "4 min",
-    "Remada curvada (barra)": "3 min",
-    "Desenvolvimento (barra em pé)": "4 min",
-    "Desenvolvimento (barra em pe)": "4 min",
-    "Levantamento Terra Romeno": "4 min",
-    "Pullover (barra)": "2 min",
-    "Remada curvada alta no peito (barra)": "2 min",
-    "Rosca direta": "2 min",
-    "Rosca martelo (barra H)": "3 min",
-    "Rosca inversa (barra)": "3 min",
-    "Rosca de punho atrás das costas (barra)": "2 min",
-    "Tríceps testa": "2 min",
-    "Triceps testa": "2 min",
+    "Agachamento com barra nas costas": "3 min",
+    "Agachamento Zercher": "3 min",
+    "Agachamento sumô com barra à frente": "90 s",
+    "Supino reto (barra)": "3 min",
+    "Supino reto back-off": "3 min",
+    "Supino inclinado (barra)": "2 min",
+    "Remada curvada (barra)": "2 min",
+    "Desenvolvimento (barra em pé)": "90 s",
+    "Desenvolvimento (barra em pe)": "90 s",
+    "Levantamento Terra Romeno": "3 min",
+    "Pullover (barra)": "60 s",
+    "Remada curvada alta no peito (barra)": "90 s",
+    "Rosca direta": "60 s",
+    "Rosca martelo (barra H)": "60 s",
+    "Rosca inversa (barra)": "60 s",
+    "Rosca de punho atrás das costas (barra)": "60 s",
+    "Tríceps testa": "60 s",
+    "Triceps testa": "60 s",
 }
+
+# Piramide crescente: a primeira serie usa 80% do alvo e a ultima e a serie
+# de topo, onde vale o RPE registrado.
+SET_RAMP_START = 0.80
+PLATE_STEP_KG = 2.0
+
+# Retorno apos pausa: exercicio parado ha RETURN_AFTER_DAYS dias ou mais volta
+# com a ultima carga menos RETURN_REDUCTION_KG, sem somar a progressao por RPE.
+RETURN_AFTER_DAYS = 10
+RETURN_REDUCTION_KG = 4.0
 
 LOAD_EQUIPMENT = {
     "Agachamento com barra nas costas": {
@@ -175,9 +186,33 @@ def read_muscle_groups():
     return db_ops.list_muscle_groups()
 
 
-def suggest_next_weight(previous_weight, previous_rpe=None):
+def days_between(start_iso, end_iso):
+    if not start_iso or not end_iso:
+        return None
+    start = datetime.strptime(str(start_iso)[:10], "%Y-%m-%d").date()
+    end = datetime.strptime(str(end_iso)[:10], "%Y-%m-%d").date()
+    return (end - start).days
+
+
+def suggest_next_weight(previous_weight, previous_rpe=None, previous_reps=None,
+                        target_reps=None, exercise_name=None, days_since=None):
     if previous_weight is None:
         return None
+    reps_changed = (
+        previous_reps and target_reps and int(previous_reps) != int(target_reps)
+    )
+    if days_since is not None and days_since >= RETURN_AFTER_DAYS:
+        base = (
+            convert_weight_for_reps(previous_weight, previous_reps, target_reps, exercise_name)
+            if reps_changed else float(previous_weight)
+        )
+        equipment = LOAD_EQUIPMENT.get(exercise_name)
+        floor = equipment["weight"] if equipment else 0.0
+        return max(base - RETURN_REDUCTION_KG, floor)
+    if reps_changed:
+        return convert_weight_for_reps(
+            previous_weight, previous_reps, target_reps, exercise_name
+        )
     if previous_rpe is None:
         return float(previous_weight)
 
@@ -189,6 +224,38 @@ def suggest_next_weight(previous_weight, previous_rpe=None):
     else:
         delta = RPE_PROGRESSION_KG.get(rpe, 0.0)
     return float(previous_weight) + delta
+
+
+def round_down_to_plates(weight, exercise_name=None):
+    """Arredonda para baixo em passos de anilha, sem ficar abaixo da barra."""
+    equipment = LOAD_EQUIPMENT.get(exercise_name)
+    bar_weight = equipment["weight"] if equipment else 0.0
+    plates = max(float(weight) - bar_weight, 0.0)
+    return bar_weight + math.floor(plates / PLATE_STEP_KG) * PLATE_STEP_KG
+
+
+def convert_weight_for_reps(weight, from_reps, to_reps, exercise_name=None):
+    """Converte a carga entre faixas de repeticao pelo 1RM estimado (Epley)."""
+    one_rm = float(weight) * (1 + int(from_reps) / 30)
+    converted = one_rm / (1 + int(to_reps) / 30)
+    return round_down_to_plates(converted, exercise_name)
+
+
+def get_set_weights(exercise_name, target_weight, sets):
+    """Retorna a carga de cada serie da piramide crescente ate o alvo."""
+    if target_weight is None:
+        return []
+    sets = max(int(sets), 1)
+    if sets == 1:
+        return [float(target_weight)]
+    weights = []
+    for idx in range(sets):
+        ratio = SET_RAMP_START + (1 - SET_RAMP_START) * idx / (sets - 1)
+        if idx == sets - 1:
+            weights.append(float(target_weight))
+        else:
+            weights.append(round_down_to_plates(target_weight * ratio, exercise_name))
+    return weights
 
 
 def get_initial_target_weight(exercise_name):
@@ -270,8 +337,8 @@ def build_training_plan(persist=True):
     previous_performance = read_previous_performance()
 
     session_id = None
+    today = date.today().strftime("%Y-%m-%d")
     if persist:
-        today = date.today().strftime("%Y-%m-%d")
         session_id = db_ops.create_session(today, plan["name"])
 
     session_exercises = []
@@ -280,7 +347,14 @@ def build_training_plan(persist=True):
         if persist:
             log_id = db_ops.log_exercise(session_id, ex["name"], ex["sets"], ex["reps"], idx)
         previous = previous_performance.get(ex["name"], {})
-        target_weight = suggest_next_weight(previous.get("weight"), previous.get("rpe"))
+        target_weight = suggest_next_weight(
+            previous.get("weight"),
+            previous.get("rpe"),
+            previous.get("reps"),
+            ex["reps"],
+            ex["name"],
+            days_between(previous.get("date"), today),
+        )
         if target_weight is None:
             target_weight = get_initial_target_weight(ex["name"])
         item = {
@@ -305,8 +379,16 @@ def build_training_b():
     Monta o Treino B de garagem a partir dos alvos atuais do treino principal.
     Nao cria sessao, logs nem session.json.
     """
-    main_exercises = preview_training()
-    targets = {ex["name"]: ex.get("target_weight") for ex in main_exercises}
+    # Os exercicios de origem podem estar em planos diferentes da rotacao A/B.
+    performance = read_previous_performance()
+    targets = {}
+    for rule in TRAINING_B_RULES:
+        if rule["source"]:
+            previous = performance.get(rule["source"], {})
+            target = suggest_next_weight(previous.get("weight"), previous.get("rpe"))
+            if target is None:
+                target = get_initial_target_weight(rule["source"])
+            targets[rule["source"]] = target
 
     training_b = []
     for rule in TRAINING_B_RULES:
@@ -372,6 +454,10 @@ def recover_active_session():
         target_weight = suggest_next_weight(
             row["previous_weight"],
             row["previous_rpe"],
+            row.get("previous_reps"),
+            row["reps"],
+            row["name"],
+            days_between(row.get("previous_date"), stored["date"]),
         )
         if target_weight is None:
             target_weight = get_initial_target_weight(row["name"])

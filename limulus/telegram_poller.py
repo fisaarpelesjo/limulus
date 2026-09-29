@@ -182,12 +182,16 @@ def _format_current_exercise(ex):
     target = ex.get("target_weight")
     equipment = ods_ops.LOAD_EQUIPMENT.get(ex["name"])
     header = f"<b>{escape(display_name.upper())}</b>"
+    set_weights = ods_ops.get_set_weights(ex["name"], target, ex["sets"])
     body = []
-    if equipment and target is not None:
-        plates = max(float(target) - equipment["weight"], 0.0)
-        body.append(f"Anilhas: <b>{_format_weight(plates)} kg</b>")
+    bar_weight = equipment["weight"] if equipment else 0.0
+    for idx, weight in enumerate(set_weights, start=1):
+        load = max(weight - bar_weight, 0.0) if equipment else weight
+        label = "anilhas" if equipment else "carga"
+        body.append(f"{idx}ª série: <b>{_format_weight(load)} kg</b> {label}")
+    if not set_weights:
+        body.append(f"Séries: <b>{ex['sets']}</b>")
     body.extend([
-        f"Séries: <b>{ex['sets']}</b>",
         f"Repetições: <b>{ex['reps']}</b>",
         f"Descanso: <b>{escape(ex.get('rest_interval', '2 min'))}</b>",
     ])
@@ -197,15 +201,20 @@ def _format_current_exercise(ex):
         footer.append(
             f"<i>Barra: {escape(bar_name)} · {_format_weight(equipment['weight'])} kg</i>"
         )
-    footer.append(
-        f"<i>{'Total com barra' if equipment else 'Carga total'}: {_format_weight(target)} kg</i>"
-        if target is not None else "Carga alvo ainda não definida. Envie a carga total para este exercício."
-    )
+    if target is not None:
+        footer.append(
+            f"<i>{'Total com barra' if equipment else 'Carga total'}: "
+            f"{' · '.join(_format_weight(w) for w in set_weights)} kg</i>"
+        )
+        footer.append("<i>RPE da última série</i>")
+    else:
+        footer.append("Carga alvo ainda não definida. Envie a carga total para este exercício.")
     return "\n\n".join([header, "\n".join(body), "\n".join(footer)])
 
 
 def _format_exercise_line(idx, ex):
-    target = _format_weight(ex.get("target_weight"))
+    set_weights = ods_ops.get_set_weights(ex["name"], ex.get("target_weight"), ex["sets"])
+    target = "→".join(_format_weight(w) for w in set_weights) or "-"
     rest = ex.get("rest_interval", "2 min")
     display_name = _display_exercise_name(ex["name"])
     return (

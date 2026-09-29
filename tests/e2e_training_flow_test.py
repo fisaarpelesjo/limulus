@@ -76,7 +76,7 @@ def main():
             total_exercises = len(db_ops.get_active_training_plan()["exercises"])
             assert len(exercises) == total_exercises
             assert exercises[0]["target_weight"] is None
-            assert exercises[0]["rest_interval"] == "4 min"
+            assert exercises[0]["rest_interval"] == "3 min"
             rosca_inversa = next(
                 exercise
                 for exercise in exercises
@@ -84,16 +84,10 @@ def main():
             )
             assert rosca_inversa["name"] == "Rosca inversa (barra)"
             assert rosca_inversa["target_weight"] == 11.0
-            assert rosca_inversa["rest_interval"] == "3 min"
+            assert rosca_inversa["rest_interval"] == "60 s"
             assert rosca_inversa["loading_note"] == "barra reta 2,20 m 11kg + 0kg de anilhas"
-            rosca_punho = next(
-                exercise for exercise in exercises
-                if exercise["name"] == "Rosca de punho atrás das costas (barra)"
-            )
-            assert rosca_punho["reps"] == 12
-            assert rosca_punho["target_weight"] == 11.0
-            assert rosca_punho["rest_interval"] == "2 min"
-            assert "Descanso: <b>4 min</b>" in sent_messages[-1]
+            assert rosca_inversa["reps"] == 12
+            assert "Descanso: <b>3 min</b>" in sent_messages[-1]
             assert "Sessão iniciada" in sent_messages[-2]
             assert "Carga alvo ainda não definida." in sent_messages[-1]
             assert (
@@ -138,8 +132,10 @@ def main():
             progressed_first = progressed_session["exercises"][0]
             assert progressed_first["target_weight"] == 82.0
             assert "82" in sent_messages[-1]
-            assert "Descanso: <b>4 min</b>" in sent_messages[-1]
-            assert "Anilhas: <b>71 kg</b>" in sent_messages[-1]
+            assert "Descanso: <b>3 min</b>" in sent_messages[-1]
+            assert "1ª série: <b>54 kg</b> anilhas" in sent_messages[-1]
+            assert "3ª série: <b>71 kg</b> anilhas" in sent_messages[-1]
+            assert "Total com barra: 65 · 73 · 82 kg" in sent_messages[-1]
 
             telegram_poller.handle("/status", session)
             assert "Treino" in sent_messages[-2]
@@ -170,7 +166,7 @@ def main():
             assert ods_ops.format_loading_note("Supino reto (barra)", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             assert ods_ops.format_loading_note("Remada curvada (barra)", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             triceps = {"name": "Tríceps testa", "sets": 3, "reps": 8, "target_weight": 18.0}
-            assert "Anilhas: <b>12 kg</b>" in telegram_poller._format_current_exercise(triceps)
+            assert "3ª série: <b>12 kg</b> anilhas" in telegram_poller._format_current_exercise(triceps)
             assert "Barra: W · 6 kg" in telegram_poller._format_current_exercise(triceps)
             assert "barra W" not in telegram_poller._format_training_msg([triceps])
 

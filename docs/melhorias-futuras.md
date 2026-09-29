@@ -7,8 +7,10 @@ implementadas no Limulus.
 
 Entregue: fluxo de treino por botoes, carga exibida vinculada ao clique,
 protecao contra duplicidade, inicio/fim persistidos e resumo com duracao.
+Tambem entregues: planos A/B de hipertrofia com rotacao automatica, piramide
+crescente por serie e conversao de carga por repeticoes (schema 14).
 
-Nao existem melhorias tecnicas priorizadas pendentes.
+Pendente priorizado: volume real da piramide no dashboard (ver abaixo).
 
 Novas propostas devem entrar neste arquivo apenas quando resolverem uma
 necessidade observada no uso. Evite adicionar funcionalidades por antecipacao
@@ -26,6 +28,33 @@ ou manter tarefas ja concluidas como se ainda fizessem parte da fila.
 - evitar novos aliases e exigir `/` nos comandos textuais do Telegram
 
 ## Novas Propostas
+
+### Volume Real Da Piramide No Dashboard
+
+**Problema observado:** desde a piramide crescente (80% -> 90% -> 100% do
+alvo), `training_logs.weight` guarda apenas a carga da serie de topo. O
+dashboard e o resumo pos-treino continuam calculando `sets x reps x weight`, o
+que superestima o volume em cerca de 10% nas sessoes novas. A carga de cada
+serie nao e persistida.
+
+**Comportamento esperado:**
+
+- calcular o volume das sessoes com piramide pela soma das cargas por serie
+- manter o calculo atual para sessoes historicas sem piramide
+- nao alterar o registro rapido por botao de RPE nem o formato `80 8`
+
+**Criterios objetivos de conclusao:**
+
+1. O volume de uma sessao com piramide bate com a soma das series exibidas.
+2. Sessoes anteriores ao schema 14 mantem o volume atual.
+3. Testes cobrem sessao com piramide, sessao historica e comparacao entre elas.
+
+**Riscos e decisoes pendentes:**
+
+- decidir entre persistir a carga de cada serie (nova tabela ou colunas) ou
+  recalcular por `ods_ops.get_set_weights()` no momento da consulta
+- recalcular depende de a regra da piramide nao mudar; persistir exige migracao
+- marcar de forma confiavel quais sessoes usaram piramide
 
 ### Analises Avancadas Do Dashboard
 
@@ -481,6 +510,18 @@ Antes de adicionar um item:
 5. planejar testes isolados
 
 ## Historico De Entregas
+
+### 2026-09-29
+
+- schema 14: plano antigo `A` renomeado para `Forca` (inativo) e novos planos
+  `A` e `B` de hipertrofia e emagrecimento, 6 exercicios cada
+- rotacao automatica A/B ao concluir a sessao do plano ativo
+- piramide crescente 80% -> 90% -> 100% do alvo, com RPE da serie de topo
+- conversao da carga pelo 1RM estimado (Epley) quando as reps do plano mudam
+- novos descansos por exercicio (3 min, 2 min, 90 s e 60 s)
+- `/treinob` passou a ler os alvos de origem direto do historico
+- retorno apos pausa: exercicio parado ha 10 dias ou mais volta com a ultima
+  carga menos 4 kg, sem progressao por RPE
 
 ### 2026-06-25
 

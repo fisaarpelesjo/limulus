@@ -25,7 +25,7 @@ comandos fica em [`docs/comandos.md`](docs/comandos.md).
   `temp/dashboard-treino.html`.
 - Backup/exportacao/restauracao: [`gerenciar_dados.py`](gerenciar_dados.py).
 - Extracao de frames: [`gerar_frames.py`](gerar_frames.py).
-- Schema SQLite atual: `SCHEMA_VERSION = 13`, em
+- Schema SQLite atual: `SCHEMA_VERSION = 14`, em
   [`limulus/db_ops.py`](limulus/db_ops.py).
 - Fonte da verdade do treino: SQLite, especialmente `training_plans` e
   `training_plan_exercises`.
@@ -85,8 +85,10 @@ estado de maquina.
 2. [`telegram_poller.py`](limulus/telegram_poller.py) interpreta a entrada
    e chama funcoes de treino, banco, dashboard ou medicoes corporais.
 3. [`ods_ops.py`](limulus/ods_ops.py) monta o treino do plano ativo,
-   calcula carga alvo por RPE, adiciona descanso e observacoes de montagem.
-   Tambem calcula o Treino B de garagem a partir dos alvos do treino principal.
+   calcula carga alvo por RPE (ou por 1RM estimado quando as reps mudam), monta
+   a piramide de cargas por serie, adiciona descanso e observacoes de montagem.
+   Tambem calcula o Treino B de garagem a partir do historico de Terra Romeno e
+   Remada curvada.
 4. [`db_ops.py`](limulus/db_ops.py) cria sessoes, logs, planos, medicoes,
    dieta e resumo pos-treino no SQLite.
 5. `session.json` guarda um cache da sessao ativa para o bot saber qual exercicio
@@ -193,7 +195,7 @@ barra.
 ```text
 /gerar          Cria uma sessao de treino no SQLite
 /prever         Mostra o treino sem salvar sessao, logs ou session.json
-/treinob        Mostra o Treino B de garagem com pesos do treino principal
+/treinob        Mostra o Treino B de garagem com pesos do historico
 /exercicios     Lista exercicios do plano ativo
 /aquecimento    Mostra aquecimento curto de corpo todo
 /volume         Mostra series e volume por grupo muscular
@@ -267,7 +269,8 @@ mensagens cosmeticas.
 3. Consulta desempenho anterior por exercicio.
 4. Cria linha em `training_sessions` com `date` e `training_type`.
 5. Cria um `training_logs` pendente para cada exercicio do plano ativo.
-6. Calcula `target_weight` pela carga anterior e RPE anterior.
+6. Calcula `target_weight` (carga da serie de topo) pela carga e RPE
+   anteriores, ou converte pelo 1RM estimado quando as reps mudaram.
 7. Adiciona `rest_interval` por exercicio.
 8. Adiciona `loading_note` quando o exercicio usa barra/equipamento fixo.
 9. Escreve `session.json` com `date`, `session_id` e exercicios.
@@ -284,15 +287,21 @@ recuperar os botoes do exercicio atual. Sem carga alvo, informe a primeira
 carga manualmente; entradas numericas continuam disponiveis.
 
 O exercicio atual separa nome, instrucoes e equipamento com linhas em branco.
-Anilhas totais, series/repeticoes e descanso aparecem em destaque; barra e
-carga total ficam abaixo. A carga enviada ao bot continua sendo a carga total.
+O body mostra uma linha por serie da piramide crescente (`1ª série: 50 kg
+anilhas`, ou `carga` sem equipamento fixo), depois repeticoes e descanso, com
+valores em destaque. O footer em italico mostra a barra, o total por serie
+(`Total com barra: 65 · 73 · 82 kg`) e `RPE da última série`. Sem alvo, aparece
+`Séries: N` e o pedido da primeira carga. A carga enviada ao bot e a carga total
+da serie de topo; o RPE se refere a essa ultima serie.
 
 `/prever` usa a mesma montagem de treino, mas nao cria `training_sessions`, nao
 cria `training_logs` e nao escreve `session.json`.
 
 `/treinob` nao cria sessao, logs nem `session.json`. Ele mostra um treino de
 garagem de 10 voltas para dias sem treino principal, com peso unico por
-exercicio. Os pesos sao calculados a partir dos alvos atuais do treino principal:
+exercicio. Os pesos sao calculados a partir do alvo de cada exercicio de origem,
+lido direto do historico (`read_previous_performance` + `suggest_next_weight`),
+sem depender do plano ativo, porque as origens ficam em planos diferentes:
 farmer walk usa 45% do terra romeno e remada leve com barra usa 60% da remada
 curvada.
 O comando nao pede nem registra RPE. Quando houver carga, ele tambem mostra a
@@ -306,7 +315,8 @@ Registro numerico:
 3. Encontra o proximo exercicio sem carga.
 4. Atualiza `training_logs.weight` e `training_logs.rpe`.
 5. Envia o proximo exercicio com alvo, descanso e montagem de carga quando houver.
-6. No ultimo exercicio, envia resumo pos-treino.
+6. No ultimo exercicio, envia resumo pos-treino. Se a sessao era do plano ativo
+   `A` ou `B`, o outro plano passa a ser o ativo.
 
 `/desfazer` encontra o ultimo log preenchido da sessao ativa e limpa `weight` e
 `rpe`.
@@ -333,7 +343,8 @@ evita comparar planos diferentes como se fossem equivalentes.
 ## Progressao De Carga
 
 A regra atual fica em `ods_ops.suggest_next_weight(previous_weight,
-previous_rpe)`:
+previous_rpe, previous_reps, target_reps, exercise_name)` e se aplica ao alvo
+da serie de topo:
 
 ```text
 RPE 7 ou menor  -> +4 kg
@@ -342,6 +353,22 @@ RPE 9           -> manter
 RPE 10 ou maior -> -2 kg
 Sem RPE         -> manter
 ```
+
+Se as reps do ultimo log do exercicio diferem das reps do plano, a carga e
+convertida pelo 1RM estimado (Epley: `1RM = peso x (1 + reps/30)`) e arredondada
+para baixo em anilhas de 2 kg acima da barra, ignorando o delta de RPE nessa
+sessao. Exemplo: 61 kg x5 vira 55 kg para 3x8.
+
+Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
+(`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
+(`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
+barra. Se as reps mudaram, a conversao vem antes. Na sessao seguinte a
+progressao por RPE volta ao normal.
+
+Piramide crescente: `ods_ops.get_set_weights(nome, alvo, series)` gera 80% ->
+90% -> 100% do alvo, com as series intermediarias arredondadas para baixo em
+anilhas (`round_down_to_plates`). A ultima serie e a de topo: o RPE registrado
+se refere a ela e `training_logs.weight` grava essa carga.
 
 Se nao houver historico, o alvo aparece como `-`, exceto nos exercicios com alvo
 inicial configurado:
@@ -367,21 +394,32 @@ O treino ativo vem de `training_plan_exercises`, ligado ao plano ativo em
 `training_plans`. `DEFAULT_EXERCISES` define o seed para bancos novos, mas o
 SQLite permanece a fonte da verdade em runtime.
 
-Catalogo ativo atual:
+Planos atuais (schema 14), com foco em hipertrofia e emagrecimento, cerca de
+60 min e 3 treinos por semana alternando A/B:
 
 ```text
-1.  Agachamento com barra nas costas           3x5
-2.  Agachamento sumô com barra à frente        3x10
-3.  Supino reto (barra)                        3x5
-4.  Supino reto back-off                       3x8
-5.  Supino inclinado (barra)                   3x8
-6.  Remada curvada (barra)                     3x8
-7.  Remada curvada alta no peito (barra)       3x10
-8.  Desenvolvimento (barra em pé)              3x5
-9.  Levantamento Terra Romeno                  3x8
-10. Rosca inversa (barra)                    3x8
-11. Rosca de punho atrás das costas (barra)     3x12
+Plano A
+1. Agachamento com barra nas costas         3x8
+2. Supino reto (barra)                      3x8
+3. Remada curvada (barra)                   3x10
+4. Desenvolvimento (barra em pé)            3x10
+5. Tríceps testa                            3x12
+6. Rosca inversa (barra)                    3x12
+
+Plano B
+1. Levantamento Terra Romeno                3x8
+2. Supino inclinado (barra)                 3x10
+3. Remada curvada (barra)                   3x10
+4. Agachamento sumô com barra à frente      3x12
+5. Remada curvada alta no peito (barra)     3x12
+6. Rosca de punho atrás das costas (barra)  3x12
 ```
+
+`DEFAULT_EXERCISES` e o plano A e `PLAN_B_EXERCISES` e o plano B. Ao concluir
+uma sessao do plano ativo `A` ou `B`, `db_ops._alternar_plano()` ativa o outro
+(`PLAN_ROTATION`). O antigo plano `A` de 11 exercicios com foco em forca virou
+`Forca`, fica inativo e pode ser selecionado com `/plano Forca`; ele nao entra
+na rotacao. `/plano NOME` continua trocando manualmente.
 
 Nomes canonicos devem permanecer no SQLite porque sao usados no historico,
 progressao, grupos musculares e dashboard. A interface pode usar
@@ -390,28 +428,31 @@ progressao, grupos musculares e dashboard. A interface pode usar
 
 Logs historicos de exercicios substituidos ou renomeados podem permanecer no
 banco como historico. Exemplos: `Agachamento (barra)`, `Agachamento Zercher`,
-`Zercher squat`, `Pullover (barra)`, `Tríceps testa`, `Supino fechado (barra)`
-e `Remada alta (barra)`.
+`Zercher squat`, `Rosca martelo (barra H)`, `Supino fechado (barra)` e
+`Remada alta (barra)`.
 
 ## Descanso E Montagem De Carga
 
 `ods_ops.get_rest_interval(exercise_name)` define descanso sugerido:
 
 ```text
-Agachamento com barra nas costas       4 min
-Agachamento Zercher                    4 min
-Supino reto (barra)                    4 min
-Supino reto back-off                   4 min
-Supino inclinado (barra)               4 min
-Remada curvada (barra)                 3 min
-Desenvolvimento (barra em pé)          4 min
-Levantamento Terra Romeno              4 min
-Pullover (barra)                       2 min
-Remada curvada alta no peito (barra)   2 min
-Rosca direta                           2 min
-Rosca inversa (barra)                3 min
-Tríceps testa                          2 min
-Padrao para demais exercicios          2 min
+Agachamento com barra nas costas         3 min
+Agachamento Zercher                      3 min
+Supino reto (barra)                      3 min
+Supino reto back-off                     3 min
+Levantamento Terra Romeno                3 min
+Supino inclinado (barra)                 2 min
+Remada curvada (barra)                   2 min
+Desenvolvimento (barra em pé)            90 s
+Remada curvada alta no peito (barra)     90 s
+Agachamento sumô com barra à frente      90 s
+Tríceps testa                            60 s
+Rosca inversa (barra)                    60 s
+Rosca de punho atrás das costas (barra)  60 s
+Pullover (barra)                         60 s
+Rosca direta                             60 s
+Rosca martelo (barra H)                  60 s
+Padrao para demais exercicios            2 min
 ```
 
 `ods_ops.format_loading_note()` gera observacoes de montagem quando ha
@@ -447,7 +488,7 @@ O banco fica em `data/limulus.db`. O schema e migrado por
 6. semeia grupos musculares padrao;
 7. semeia o plano de treino padrao quando necessario.
 
-Versao atual: `SCHEMA_VERSION = 13`.
+Versao atual: `SCHEMA_VERSION = 14`.
 
 Tabelas principais:
 
@@ -514,10 +555,14 @@ Resumo das versoes:
 8   Cria body_profile
 9   Adiciona vitamina B6 em foods e diet_targets
 10  Renomeia Agachamento Zercher para Agachamento com barra nas costas
+11  Troca Rosca martelo (barra H) por Rosca inversa (barra)
+12  Insere Rosca de punho atrás das costas (barra) no catalogo/plano ativo
+13  Adiciona started_at/completed_at em training_sessions e cria training_buttons
+14  Renomeia o plano A antigo para Forca e cria os planos A e B de hipertrofia
 ```
 
 Mudancas de catalogo que precisam valer para bancos novos devem atualizar
-`DEFAULT_EXERCISES`. Mudancas que precisam afetar bancos existentes devem virar
+`DEFAULT_EXERCISES` (plano A) ou `PLAN_B_EXERCISES` (plano B). Mudancas que precisam afetar bancos existentes devem virar
 migracao.
 
 ## Dashboard
@@ -529,7 +574,8 @@ O dashboard:
 
 - le `training_sessions` e `training_logs`;
 - considera apenas logs com `weight IS NOT NULL` e carga maior que zero;
-- calcula volume como `sets x reps x weight`;
+- calcula volume como `sets x reps x weight` (com a piramide, `weight` e a carga
+  de topo, o que superestima o volume em cerca de 10%);
 - usa `exercise_muscle_groups` como fonte unica de grupos musculares;
 - consulta plano ativo, cargas, RPE, peso, cintura, perfil corporal e dieta;
 - gera HTML local sem servidor ou build.

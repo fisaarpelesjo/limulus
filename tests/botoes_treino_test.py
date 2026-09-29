@@ -29,11 +29,17 @@ def main():
                     conn.execute("INSERT INTO training_sessions (date, training_type) VALUES ('2020-01-01', 'TREINO')")
                 conn.close()
             db_ops.init_db()
-            assert db_ops.get_schema_version() == 13
+            assert db_ops.get_schema_version() == 14
+            nomes = {p['name']: p for p in db_ops.list_training_plans()}
+            assert {'A', 'B'} <= set(nomes) and nomes['A']['active']
             assert db_ops.get_session_timing(1) == {'started_at': None, 'completed_at': None}
-            previous, previous_id = ods_ops.generate_training()
-            for ex in previous:
-                db_ops.update_log_weight(ex['log_id'], 80, 8)
+            # Concluir A ativa B, e concluir B volta para A.
+            for plano in ('A', 'B'):
+                assert db_ops.get_active_training_plan()['name'] == plano
+                previous, previous_id = ods_ops.generate_training()
+                for ex in previous:
+                    db_ops.update_log_weight(ex['log_id'], 80, 8)
+            assert db_ops.get_active_training_plan()['name'] == 'A'
 
             bot.handle_generate()
             assert len(messages) == 2
@@ -42,10 +48,10 @@ def main():
             assert 'Treino de hoje' not in messages[0][0]
             text, kwargs = messages[-1]
             assert '<b>AGACHAMENTO COM BARRA NAS COSTAS</b>\n\n' in text
-            assert 'Anilhas: <b>71 kg</b>' in text
-            assert 'Séries: <b>3</b>\nRepetições: <b>5</b>' in text
+            assert '1ª série: <b>54 kg</b> anilhas\n2ª série: <b>62 kg</b> anilhas\n3ª série: <b>71 kg</b> anilhas' in text
+            assert 'Repetições: <b>8</b>' in text
             assert '<i>Barra: 2,20 m · 11 kg</i>' in text
-            assert '<i>Total com barra: 82 kg</i>' in text
+            assert '<i>Total com barra: 65 · 73 · 82 kg</i>' in text
             keyboard = kwargs['reply_markup']['inline_keyboard'][0]
             assert [item['text'] for item in keyboard] == ['RPE ≤7', 'RPE 8', 'RPE 9', 'RPE ≥10']
             session = json.loads(bot.SESSION_FILE.read_text(encoding='utf-8'))

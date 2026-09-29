@@ -13,7 +13,7 @@ dados de dieta.
 
 ## Versao E Migracoes
 
-O esquema atual usa `SCHEMA_VERSION = 13`. A tabela `schema_migrations` registra
+O esquema atual usa `SCHEMA_VERSION = 14`. A tabela `schema_migrations` registra
 uma linha por versao aplicada, com data e hora.
 
 `db_ops.init_db()`:
@@ -47,6 +47,10 @@ a carga exibida e e consumido numa transacao que valida sessao, ordem e
 registro pendente. `/desfazer` invalida os tokens do log e limpa o fim da
 sessao. A exportacao JSON inclui a nova tabela. O banco vivo so deve ser
 migrado apos backup; os testes usam bancos temporarios.
+
+A migracao 14 renomeia o plano antigo `A` (11 exercicios, foco em forca) para
+`Forca`, que fica inativo, e cria os planos `A` e `B` de hipertrofia e
+emagrecimento, deixando `A` ativo. Nao cria tabelas nem colunas.
 
 O launcher local usa a API de backup do SQLite, sem copiar o arquivo enquanto
 uma transacao pode estar incompleta:
@@ -134,9 +138,14 @@ reps           INTEGER NOT NULL
 sort_order     INTEGER NOT NULL
 ```
 
-O plano `A` e criado a partir do catalogo ativo existente. Outros planos podem
+Desde a versao 14 existem os planos `A`, `B` e `Forca`. Outros planos podem
 ser cadastrados com `db_ops.replace_training_plan()`. O bot seleciona com
 `/plano NOME`.
+
+Rotacao automatica: quando o ultimo log de uma sessao e registrado e o
+`training_type` da sessao e o plano ativo `A` ou `B`, `db_ops._alternar_plano()`
+ativa o outro (`PLAN_ROTATION = {"A": "B", "B": "A"}`). Sessoes de outros
+planos, como `Forca`, nao alternam o plano ativo.
 
 ### `training_sessions`
 
@@ -172,6 +181,9 @@ volume de treino de cada linha assim:
 ```text
 volume = sets x reps x weight
 ```
+
+Com a piramide crescente, `weight` e a carga de topo, entao esse volume fica
+superestimado em cerca de 10% nas sessoes novas.
 
 `python gerar_dashboard.py` consolida esse volume por sessao, exercicio, semana
 e grupo muscular. O HTML exibe uma pagina unica rolavel com indicadores de resumo,
@@ -249,34 +261,44 @@ cintura/altura. Esses valores sao indicadores derivados e nao diagnosticos.
 
 ## Catalogo Atual
 
-Primeiro exercicio ativo:
+Planos com foco em hipertrofia e emagrecimento, cerca de 60 min, 3 treinos por
+semana alternando A/B:
 
 ```text
-sort_order 1
-name       Agachamento com barra nas costas
-sets       3
-reps       5
+Plano A
+1. Agachamento com barra nas costas        3x8
+2. Supino reto (barra)                     3x8
+3. Remada curvada (barra)                  3x10
+4. Desenvolvimento (barra em pé)           3x10
+5. Tríceps testa                           3x12
+6. Rosca inversa (barra)                   3x12
+
+Plano B
+1. Levantamento Terra Romeno               3x8
+2. Supino inclinado (barra)                3x10
+3. Remada curvada (barra)                  3x10
+4. Agachamento sumô com barra à frente     3x12
+5. Remada curvada alta no peito (barra)    3x12
+6. Rosca de punho atrás das costas (barra) 3x12
 ```
 
-Ele usa a barra apoiada no trapezio/ombro. Historico antigo de `Agachamento
-Zercher` deve permanecer como historico salvo no SQLite.
+O plano `Forca` guarda a sequencia antiga de 11 exercicios (agachamento 3x5,
+sumô 3x10, supino reto 3x5, back-off 3x8, supino inclinado 3x8, remada curvada
+3x8, remada alta no peito 3x10, desenvolvimento 3x5, terra romeno 3x8, rosca
+inversa 3x8 e rosca de punho 3x12). Fica inativo e pode ser selecionado com
+`/plano Forca`.
 
-O segundo exercicio ativo e `Agachamento sumô com barra à frente` (`3x10`),
-com foco principal nos adutores. O quinto e `Supino inclinado (barra)` (`3x8`),
-logo depois de `Supino reto back-off`, substituindo `Pullover (barra)` para
-sessoes futuras. O setimo e `Remada curvada alta no peito (barra)` (`3x10`),
-logo depois de `Remada curvada (barra)`. O decimo e `Rosca inversa
-(barra)` (`3x8`), substituindo `Rosca martelo (barra H)` para sessoes futuras. `Supino
-fechado (barra)` e `Remada alta (barra)` estao inativos para sessoes futuras.
-Historico antigo de
-`Agachamento Zercher`, `Rosca direta`, `Pullover (barra)`, `Tríceps testa` e
-`Supino fechado (barra)` e `Remada alta (barra)` permanece como historico salvo
-no SQLite.
+O agachamento usa a barra apoiada no trapezio/ombro. `Supino fechado (barra)` e
+`Remada alta (barra)` estao inativos para sessoes futuras. Historico antigo de
+`Agachamento Zercher`, `Rosca direta`, `Rosca martelo (barra H)`, `Supino
+fechado (barra)` e `Remada alta (barra)` permanece como historico salvo no
+SQLite.
 
 Ao mudar o catalogo para frente, atualize:
 
 - `data/limulus.db`
-- `limulus/db_ops.py`, em `DEFAULT_EXERCISES`
+- `limulus/db_ops.py`, em `DEFAULT_EXERCISES` (plano A) ou `PLAN_B_EXERCISES`
+  (plano B)
 
 ## Criacao De Sessao
 
@@ -303,8 +325,8 @@ Sessoes sem pendencias nao sao consideradas ativas.
 
 ## Progressao De Carga
 
-`db_ops.get_last_performance()` busca a ultima carga valida e o RPE mais recente
-por exercicio. Durante `ods_ops.generate_training()`, cada exercicio recebe um
+`db_ops.get_last_performance()` busca a ultima carga valida, o RPE e as reps
+mais recentes por exercicio. Durante `ods_ops.generate_training()`, cada exercicio recebe um
 `target_weight` calculado assim:
 
 ```text
@@ -324,6 +346,24 @@ correspondente.
 Analises derivadas do banco devem interpretar uma sequencia de RPE 9 junto com
 a qualidade da execucao. Sem dados de tecnica, repeticoes incompletas ou
 amplitude, o valor isolado nao comprova falta de evolucao.
+
+Conversao por repeticoes: se as reps do ultimo log do exercicio diferem das reps
+do plano, `suggest_next_weight()` converte a carga pelo 1RM estimado (Epley:
+`1RM = peso x (1 + reps/30)`) e arredonda para baixo em anilhas de 2 kg acima
+da barra, ignorando o delta de RPE nessa sessao. Exemplo: 61 kg x5 vira 55 kg
+para 3x8.
+
+Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
+(`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
+(`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
+barra. Se as reps mudaram, a conversao vem antes. Na sessao seguinte a
+progressao por RPE volta ao normal.
+
+Piramide crescente: `ods_ops.get_set_weights()` divide o alvo em 80% -> 90% ->
+100%, com as series intermediarias arredondadas para baixo em anilhas. A ultima
+serie e a serie de topo; o RPE registrado se refere a ela e
+`training_logs.weight` grava a carga de topo. A carga de cada serie nao e
+persistida.
 
 Se nao houver historico de carga para o exercicio, `target_weight` fica `None` e
 a tabela do bot mostra `-`.
@@ -367,8 +407,11 @@ anilhas como `target_weight - 11`. Exemplo: `target_weight = 18` gera
 
 O descanso sugerido fica em `session.json`, nao em uma tabela SQLite. Ele e
 derivado do nome do exercicio por `ods_ops.get_rest_interval()` durante a geracao
-da sessao. `Supino reto back-off` e `Supino inclinado (barra)` usam 4 min;
-`Remada curvada (barra)` e `Rosca inversa (barra)` usam 3 min.
+da sessao. Agachamento com barra nas costas, supino reto, supino reto back-off
+e Terra Romeno usam 3 min; supino inclinado e remada curvada, 2 min;
+desenvolvimento, remada curvada alta no peito e agachamento sumô, 90 s; triceps
+testa, rosca inversa, rosca de punho, pullover, rosca direta e rosca martelo,
+60 s. Os demais usam 2 min.
 
 ## Progresso
 
@@ -377,7 +420,7 @@ da sessao. `Supino reto back-off` e `Supino inclinado (barra)` usam 4 min;
 ```text
 filled = 0  -> proximo exercicio exercises[0]
 filled = 1  -> proximo exercicio exercises[1]
-filled = 11 -> treino completo
+filled = 6  -> treino completo (planos A e B)
 ```
 
 ## Inspecao Segura

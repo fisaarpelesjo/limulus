@@ -8,7 +8,7 @@ from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DB_PATH = DATA_DIR / "limulus.db"
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def agora_brasilia():
@@ -16,18 +16,25 @@ def agora_brasilia():
 
 
 DEFAULT_EXERCISES = [
-    {"name": "Agachamento com barra nas costas", "sets": 3, "reps": 5},
-    {"name": "Agachamento sumô com barra à frente", "sets": 3, "reps": 10},
-    {"name": "Supino reto (barra)", "sets": 3, "reps": 5},
-    {"name": "Supino reto back-off", "sets": 3, "reps": 8},
-    {"name": "Supino inclinado (barra)", "sets": 3, "reps": 8},
-    {"name": "Remada curvada (barra)", "sets": 3, "reps": 8},
-    {"name": "Remada curvada alta no peito (barra)", "sets": 3, "reps": 10},
-    {"name": "Desenvolvimento (barra em pé)", "sets": 3, "reps": 5},
+    {"name": "Agachamento com barra nas costas", "sets": 3, "reps": 8},
+    {"name": "Supino reto (barra)", "sets": 3, "reps": 8},
+    {"name": "Remada curvada (barra)", "sets": 3, "reps": 10},
+    {"name": "Desenvolvimento (barra em pé)", "sets": 3, "reps": 10},
+    {"name": "Tríceps testa", "sets": 3, "reps": 12},
+    {"name": "Rosca inversa (barra)", "sets": 3, "reps": 12},
+]
+
+PLAN_B_EXERCISES = [
     {"name": "Levantamento Terra Romeno", "sets": 3, "reps": 8},
-    {"name": "Rosca inversa (barra)", "sets": 3, "reps": 8},
+    {"name": "Supino inclinado (barra)", "sets": 3, "reps": 10},
+    {"name": "Remada curvada (barra)", "sets": 3, "reps": 10},
+    {"name": "Agachamento sumô com barra à frente", "sets": 3, "reps": 12},
+    {"name": "Remada curvada alta no peito (barra)", "sets": 3, "reps": 12},
     {"name": "Rosca de punho atrás das costas (barra)", "sets": 3, "reps": 12},
 ]
+
+# Planos que alternam automaticamente ao concluir uma sessao.
+PLAN_ROTATION = {"A": "B", "B": "A"}
 
 DEFAULT_MUSCLE_GROUPS = {
     "Agachamento (barra)": [
@@ -412,6 +419,53 @@ SCHEMA_V13_STATEMENTS = (
     "CREATE INDEX idx_training_buttons_log ON training_buttons(log_id)",
 )
 
+SCHEMA_V14_STATEMENTS = (
+    """
+    UPDATE training_plans
+    SET name = 'Forca', active = 0, sort_order = 2
+    WHERE name = 'A'
+      AND EXISTS (SELECT 1 FROM training_plan_exercises WHERE plan_id = training_plans.id)
+      AND NOT EXISTS (SELECT 1 FROM training_plans WHERE name = 'Forca')
+    """,
+    """
+    INSERT OR IGNORE INTO training_plans (name, active, sort_order)
+    VALUES ('A', 0, 0), ('B', 0, 1)
+    """,
+    """
+    DELETE FROM training_plan_exercises
+    WHERE plan_id IN (SELECT id FROM training_plans WHERE name IN ('A', 'B'))
+    """,
+    """
+    INSERT INTO training_plan_exercises
+        (plan_id, exercise_name, sets, reps, sort_order)
+    SELECT p.id, v.column1, v.column2, v.column3, v.column4
+    FROM training_plans AS p, (VALUES
+        ('Agachamento com barra nas costas', 3, 8, 0),
+        ('Supino reto (barra)', 3, 8, 1),
+        ('Remada curvada (barra)', 3, 10, 2),
+        ('Desenvolvimento (barra em pé)', 3, 10, 3),
+        ('Tríceps testa', 3, 12, 4),
+        ('Rosca inversa (barra)', 3, 12, 5)
+    ) AS v
+    WHERE p.name = 'A'
+    """,
+    """
+    INSERT INTO training_plan_exercises
+        (plan_id, exercise_name, sets, reps, sort_order)
+    SELECT p.id, v.column1, v.column2, v.column3, v.column4
+    FROM training_plans AS p, (VALUES
+        ('Levantamento Terra Romeno', 3, 8, 0),
+        ('Supino inclinado (barra)', 3, 10, 1),
+        ('Remada curvada (barra)', 3, 10, 2),
+        ('Agachamento sumô com barra à frente', 3, 12, 3),
+        ('Remada curvada alta no peito (barra)', 3, 12, 4),
+        ('Rosca de punho atrás das costas (barra)', 3, 12, 5)
+    ) AS v
+    WHERE p.name = 'B'
+    """,
+    "UPDATE training_plans SET active = CASE WHEN name = 'A' THEN 1 ELSE 0 END",
+)
+
 MIGRATIONS = {
     1: SCHEMA_V1_STATEMENTS,
     2: SCHEMA_V2_STATEMENTS,
@@ -426,6 +480,7 @@ MIGRATIONS = {
     11: SCHEMA_V11_STATEMENTS,
     12: SCHEMA_V12_STATEMENTS,
     13: SCHEMA_V13_STATEMENTS,
+    14: SCHEMA_V14_STATEMENTS,
 }
 
 
@@ -950,10 +1005,34 @@ def _atualizar_fim(conn, session_id):
     if pending:
         conn.execute("UPDATE training_sessions SET completed_at=NULL WHERE id=?", (session_id,))
     else:
+        was_open = conn.execute(
+            "SELECT completed_at IS NULL FROM training_sessions WHERE id=?", (session_id,)
+        ).fetchone()[0]
         conn.execute(
             "UPDATE training_sessions SET completed_at=COALESCE(completed_at, ?) WHERE id=?",
             (agora_brasilia().isoformat(), session_id),
         )
+        if was_open:
+            _alternar_plano(conn, session_id)
+
+
+def _alternar_plano(conn, session_id):
+    """Ativa o proximo plano da rotacao A/B quando a sessao concluida era do plano ativo."""
+    row = conn.execute(
+        "SELECT s.training_type FROM training_sessions s "
+        "JOIN training_plans p ON p.name = s.training_type AND p.active = 1 "
+        "WHERE s.id=?", (session_id,)
+    ).fetchone()
+    proximo = PLAN_ROTATION.get(row[0]) if row else None
+    if proximo is None:
+        return
+    plano = conn.execute(
+        "SELECT p.id FROM training_plans p WHERE p.name=? "
+        "AND EXISTS (SELECT 1 FROM training_plan_exercises e WHERE e.plan_id = p.id)",
+        (proximo,),
+    ).fetchone()
+    if plano:
+        conn.execute("UPDATE training_plans SET active = CASE WHEN id=? THEN 1 ELSE 0 END", (plano[0],))
 
 
 def criar_botoes_rpe(log_id, weight):
@@ -1022,17 +1101,18 @@ def get_last_weights():
 
 
 def get_last_performance():
-    """Return {exercise_name: {weight, rpe}} from most recent entry per exercise."""
+    """Return {exercise_name: {weight, rpe, reps, date}} from most recent entry per exercise."""
     init_db()
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT exercise_name, weight, rpe
-            FROM training_logs
-            WHERE weight IS NOT NULL AND weight > 0
-              AND sets > 0
-              AND reps > 0
-              AND id IN (
+            SELECT l.exercise_name, l.weight, l.rpe, l.reps, s.date
+            FROM training_logs l
+            JOIN training_sessions s ON s.id = l.session_id
+            WHERE l.weight IS NOT NULL AND l.weight > 0
+              AND l.sets > 0
+              AND l.reps > 0
+              AND l.id IN (
                 SELECT MAX(id)
                 FROM training_logs
                 WHERE weight IS NOT NULL AND weight > 0
@@ -1043,7 +1123,12 @@ def get_last_performance():
             """
         ).fetchall()
         return {
-            r["exercise_name"]: {"weight": r["weight"], "rpe": r["rpe"]}
+            r["exercise_name"]: {
+                "weight": r["weight"],
+                "rpe": r["rpe"],
+                "reps": r["reps"],
+                "date": r["date"],
+            }
             for r in rows
         }
 
@@ -1099,13 +1184,14 @@ def get_latest_incomplete_session():
         for log in logs:
             previous = conn.execute(
                 """
-                SELECT weight, rpe
-                FROM training_logs
-                WHERE exercise_name = ?
-                  AND id < ?
-                  AND weight IS NOT NULL
-                  AND weight > 0
-                ORDER BY id DESC
+                SELECT l.weight, l.rpe, l.reps, s.date
+                FROM training_logs l
+                JOIN training_sessions s ON s.id = l.session_id
+                WHERE l.exercise_name = ?
+                  AND l.id < ?
+                  AND l.weight IS NOT NULL
+                  AND l.weight > 0
+                ORDER BY l.id DESC
                 LIMIT 1
                 """,
                 (log["exercise_name"], log["id"]),
@@ -1121,6 +1207,8 @@ def get_latest_incomplete_session():
                     "sort_order": log["sort_order"],
                     "previous_weight": previous["weight"] if previous else None,
                     "previous_rpe": previous["rpe"] if previous else None,
+                    "previous_reps": previous["reps"] if previous else None,
+                    "previous_date": previous["date"] if previous else None,
                 }
             )
 
