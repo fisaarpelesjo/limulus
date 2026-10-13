@@ -308,7 +308,7 @@ def _format_exercises_msg(exercises):
 
 
 KEYBOARD_START = {
-    "keyboard": [[{"text": "Gerar treino"}]],
+    "keyboard": [[{"text": "Gerar treino"}, {"text": "Mostrar dieta"}]],
     "resize_keyboard": True,
     "is_persistent": True,
 }
@@ -651,6 +651,55 @@ def handle_dashboard():
         send("Erro ao atualizar o dashboard. Consulte o terminal.")
 
 
+def _format_diet_meal(meal, items):
+    lines = [f"<b>{escape(meal)}</b>"]
+    lines.extend(
+        f"• {escape(item['name'])} — {dashboard._fmt_quantidade(item['quantity'], item['unit'])}"
+        for item in items
+    )
+    return "\n".join(lines)
+
+
+def _format_diet_macro_line(label, key, unit, totals, targets, casas=0):
+    total = float(totals.get(key) or 0)
+    target = targets.get(key) if targets else None
+    formatar = dashboard._fmt_decimal
+    if target:
+        percentual = total / target * 100
+        return (
+            f"{label}: <b>{formatar(total, casas)}/{formatar(target, casas)} {unit}</b> "
+            f"({formatar(percentual, 0)}%)"
+        )
+    return f"{label}: <b>{formatar(total, casas)} {unit}</b>"
+
+
+def handle_diet():
+    entries = db_ops.list_diet_entries()
+    if not entries:
+        send("Nenhum alimento cadastrado na dieta atual.")
+        return
+
+    meals = {}
+    for entry in entries:
+        meals.setdefault(entry["meal"], []).append(entry)
+
+    lines = ["<b>DIETA ATUAL</b>"]
+    for meal, items in meals.items():
+        lines.append("")
+        lines.append(_format_diet_meal(meal, items))
+
+    totals_and_targets = db_ops.get_diet_totals()
+    totals = totals_and_targets["totals"]
+    targets = totals_and_targets["targets"] or {}
+
+    lines.append("")
+    lines.append(_format_diet_macro_line("Calorias", "calories", "kcal", totals, targets))
+    lines.append(_format_diet_macro_line("Proteína", "protein_g", "g", totals, targets))
+    lines.append(_format_diet_macro_line("Carboidrato", "carbo_g", "g", totals, targets))
+    lines.append(_format_diet_macro_line("Gordura", "fat_g", "g", totals, targets))
+    send("\n".join(lines))
+
+
 def handle_weight(text):
     parts = text.strip().split(maxsplit=1)
     if len(parts) == 2:
@@ -864,6 +913,7 @@ def main():
                         "/aquecimento — mostra o aquecimento\n"
                         "/volume — volume por grupo muscular\n"
                         "/dashboard — atualiza o dashboard local\n"
+                        "/dieta — mostra a dieta atual e as metas\n"
                         "/planos — lista planos de treino\n"
                         "/plano NOME — seleciona o plano ativo\n"
                         "/peso VALOR — registra o peso corporal\n"
@@ -992,6 +1042,14 @@ def main():
 
                 if lower == "/treinob":
                     handle_training_b()
+                    continue
+
+                if lower in {"/dieta", "mostrar dieta"}:
+                    try:
+                        handle_diet()
+                    except Exception as exc:
+                        LOGGER.error("Falha ao mostrar dieta tipo=%s", type(exc).__name__)
+                        send("Não foi possível mostrar a dieta. Consulte o terminal.")
                     continue
 
                 if not _is_session_input(text):

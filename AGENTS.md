@@ -85,8 +85,8 @@ ajudarem a clareza, mas devem ser acompanhados de contexto em portugues sempre
 que forem visiveis ao usuario ou na documentacao.
 
 Comandos textuais do Telegram devem usar somente os nomes oficiais em PT-BR e
-exigir `/`, exceto o texto exato do teclado "Gerar treino". Nao aceitar outros
-aliases em ingles ou nomes sem barra.
+exigir `/`, exceto os textos exatos do teclado "Gerar treino" e
+"Mostrar dieta". Nao aceitar outros aliases em ingles ou nomes sem barra.
 
 ## Sincronizacao Das Instrucoes De Agentes
 
@@ -129,6 +129,7 @@ Comandos principais:
 - `/aquecimento`
 - `/volume`
 - `/dashboard`
+- `/dieta`
 - `/planos`
 - `/plano NOME`
 - `/peso VALOR`
@@ -188,9 +189,13 @@ A lista de `/prever` mostra o alvo como `65→73→82kg`.
    do plano ativo A ou B, o bot ativa o outro automaticamente.
 10. `/dashboard` atualiza `temp/dashboard-treino.html` e responde com horario,
    ultima sessao, volume e RPE medio geral, sem expor caminho local.
-11. `/peso VALOR` registra o peso corporal com data e `/peso` consulta o valor
+11. `/dieta` e o teclado "Mostrar dieta" listam os alimentos de `diet_entries`
+    agrupados por refeicao e comparam os totais de calorias, proteina,
+    carboidrato e gordura com as metas de `diet_targets`, sem criar sessao,
+    logs ou alterar o banco.
+12. `/peso VALOR` registra o peso corporal com data e `/peso` consulta o valor
     atual, a variacao anterior e as ultimas medicoes.
-12. `/cintura VALOR` registra a circunferencia da cintura em centimetros e
+13. `/cintura VALOR` registra a circunferencia da cintura em centimetros e
     `/cintura` consulta o valor atual, a variacao e as ultimas medicoes.
 
 ### `limulus/ods_ops.py`

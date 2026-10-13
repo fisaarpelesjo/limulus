@@ -15,6 +15,7 @@ Todos os comandos textuais devem ser enviados com `/`.
 | `/aquecimento` | Mostra a sequencia de aquecimento. |
 | `/volume` | Mostra o volume por grupo muscular. |
 | `/dashboard` | Atualiza o dashboard HTML local. |
+| `/dieta` ou botão `Mostrar dieta` | Mostra os alimentos da dieta atual por refeicao e compara calorias, proteina, carboidrato e gordura com as metas. |
 | `/planos` | Lista os planos de treino cadastrados. |
 | `/plano NOME` | Seleciona o plano ativo (`A`, `B` ou `Forca`). A e B tambem alternam sozinhos ao concluir a sessao. |
 | `/peso VALOR` | Registra o peso corporal em quilogramas. |

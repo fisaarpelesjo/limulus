@@ -69,7 +69,8 @@ novos de documentacao, mensagens de launcher e textos visiveis ao usuario.
 
 Evite criar novos nomes ou textos em ingles quando houver uma alternativa
 natural em PT-BR. Comandos textuais do Telegram devem usar somente os nomes
-oficiais em portugues e exigir `/`, exceto o texto do teclado "Gerar treino".
+oficiais em portugues e exigir `/`, exceto os textos do teclado "Gerar treino"
+e "Mostrar dieta".
 
 ## Sincronizacao Das Instrucoes De Agentes
 
@@ -107,9 +108,10 @@ Comandos principais em PT-BR:
 
 - `/gerar` e o teclado "Gerar treino" iniciam ou retomam a sessao, sem lista
   completa. Enviam data/hora de Brasilia e o primeiro exercicio. O teclado
-  some durante o treino e volta ao concluir. O texto "Gerar treino" e a unica
-  excecao aos comandos com barra. Botoes RPE ≤7, 8, 9 e ≥10 registram a carga
-  exibida (extremos armazenados como 7 e 10); nao ha botao sem RPE.
+  some durante o treino e volta ao concluir. Os textos "Gerar treino" e
+  "Mostrar dieta" sao as unicas excecoes aos comandos com barra. Botoes RPE
+  ≤7, 8, 9 e ≥10 registram a carga exibida (extremos armazenados como 7 e 10);
+  nao ha botao sem RPE.
   Header em caixa alta; body com uma linha por serie da piramide, repeticoes e
   descanso, valores em negrito; footer em italico com barra, total por serie e
   "RPE da última série".
@@ -128,6 +130,9 @@ Comandos principais em PT-BR:
 - `/aquecimento` mostra o aquecimento.
 - `/volume` mostra series por grupo muscular.
 - `/dashboard` atualiza o dashboard local e envia resumo curto.
+- `/dieta` e o teclado "Mostrar dieta" mostram os alimentos da dieta atual
+  agrupados por refeicao e os totais de calorias, proteina, carboidrato e
+  gordura comparados as metas de `diet_targets`, sem criar sessao ou logs.
 - `/planos` lista planos cadastrados.
 - `/plano NOME` seleciona o plano ativo.
 - `/peso VALOR` registra peso corporal e `/peso` consulta o historico recente.
