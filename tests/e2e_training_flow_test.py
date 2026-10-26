@@ -182,7 +182,7 @@ def main():
             telegram_poller.handle_generate()
             reduced_session = json.loads(test_session.read_text(encoding="utf-8"))
             reduced_first = reduced_session["exercises"][0]
-            assert reduced_first["target_weight"] == 78.5
+            assert reduced_first["target_weight"] == 76.5
 
             summary_session = db_ops.create_session("2026-06-10")
             summary_log = db_ops.log_exercise(

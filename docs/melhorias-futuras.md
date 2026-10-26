@@ -545,6 +545,18 @@ Antes de adicionar um item:
   (60 s, 4 kg por mao), feitos deitado de brucos no banco inclinado com uma
   barra de 40 cm em cada mao (`per_hand`). As remadas curvadas ficam so na
   terca
+- ajuste apos o primeiro treino `A` do retorno: supino inclinado e
+  desenvolvimento falharam no ultimo set (RPE 10) com 31 e 29 kg, e o supino
+  reto e a elevacao lateral tambem. A conversao de Epley a partir de cargas de
+  5-8 reps superestimou a carga de 12-15 reps, somada ao mes parado e aos
+  descansos de 60-90 s
+- RPE 10 ou maior passa de -2 kg para -4 kg; nos exercicios com carga por mao
+  (`per_hand`) a descida fica em -2 kg e a carga nao fica abaixo da barra
+- pausa de 21 dias ou mais passa de 80% para 68% da ultima carga convertida
+  (`RETURN_LONG_FACTOR`), o que deixa os planos `B`, `C` e `E` cerca de 15%
+  mais leves no primeiro treino de cada exercicio
+- alvos iniciais por mao: elevacao lateral 2 kg, remada apoiada no banco
+  12 kg e crucifixo invertido apoiado 2 kg
 
 ### 2026-09-29
 

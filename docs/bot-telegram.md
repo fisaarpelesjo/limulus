@@ -201,7 +201,7 @@ calculado pela ultima carga registrada e pelo RPE:
 RPE 7 ou menor  -> +2 kg
 RPE 8           -> +2 kg
 RPE 9           -> manter
-RPE 10 ou maior -> -2 kg
+RPE 10 ou maior -> -4 kg (carga por mao: -2 kg)
 Sem RPE         -> manter
 ```
 
@@ -215,7 +215,7 @@ perda tecnica, repeticoes incompletas, piora de amplitude ou ausencia prolongada
 de melhora na execucao.
 
 Exemplo: se o treino anterior registrou `40 8`, o proximo `/gerar` mostra
-`alvo: 42kg`. Se registrou `40 10`, o proximo `/gerar` mostra `alvo: 38kg`.
+`alvo: 42kg`. Se registrou `40 10`, o proximo `/gerar` mostra `alvo: 36kg`.
 
 Se as reps do ultimo log diferem das reps do plano atual, o alvo e convertido
 pelo 1RM estimado (Epley: `1RM = peso x (1 + reps/30)`) e arredondado para
@@ -225,9 +225,9 @@ vira 49 kg para 3x12.
 Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
 (`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
 (`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
-barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 80%
+barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 68%
 (`RETURN_LONG_FACTOR`) da ultima carga, arredondado para baixo em anilhas.
-Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12. Se as reps mudaram,
+Exemplo: 61 kg x5 parado ha 35 dias vira 33 kg para 3x12. Se as reps mudaram,
 a conversao vem antes. Na sessao seguinte a progressao por RPE volta ao normal.
 
 As series seguem uma piramide crescente de 80% -> 90% -> 100% do alvo
@@ -235,10 +235,10 @@ As series seguem uma piramide crescente de 80% -> 90% -> 100% do alvo
 anilhas de 2 kg. A carga gravada no log e a da serie de topo.
 
 A `Elevação lateral` usa duas barras ocas de 40 cm, uma em cada mao. A carga e
-por mao, com alvo inicial de 4 kg, e a mensagem mostra `anilhas por mão` em cada
+por mao, com alvo inicial de 2 kg, e a mensagem mostra `anilhas por mão` em cada
 serie, `Barra: 40 cm · 0 kg (uma em cada mão)` e `Total por mão`. A remada
-apoiada no banco (alvo inicial 14 kg por mao) e o crucifixo invertido apoiado
-(4 kg por mao), da sexta, usam o mesmo formato e aparecem sem o sufixo
+apoiada no banco (alvo inicial 12 kg por mao) e o crucifixo invertido apoiado
+(2 kg por mao), da sexta, usam o mesmo formato e aparecem sem o sufixo
 `(barras 40 cm)`.
 
 `Rosca inversa (barra)` tem alvo inicial de 11 kg e `Supino inclinado (barra)`

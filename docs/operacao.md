@@ -145,7 +145,7 @@ no exercicio e o RPE:
 RPE 7 ou menor  -> +2 kg
 RPE 8           -> +2 kg
 RPE 9           -> manter
-RPE 10 ou maior -> -2 kg
+RPE 10 ou maior -> -4 kg (carga por mao: -2 kg)
 Sem RPE         -> manter
 ```
 
@@ -163,7 +163,7 @@ Hoje: 40 8
 Proximo /gerar: alvo 42 kg
 
 Hoje: 40 10
-Proximo /gerar: alvo 38 kg
+Proximo /gerar: alvo 36 kg
 ```
 
 O alvo e a carga da ultima serie (topo); as anteriores usam cerca de 80% e 90%
@@ -172,8 +172,8 @@ mudaram desde o ultimo registro (por exemplo de 3x5 para 3x12), o alvo e
 convertido pelo 1RM estimado: 61 kg x5 vira 49 kg para 3x12.
 
 Depois de uma pausa, o alvo fica mais leve: de 10 a 20 dias parado, a ultima
-carga menos 4 kg; com 21 dias ou mais, 80% da ultima carga, arredondada para
-baixo em anilhas. Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12.
+carga menos 4 kg; com 21 dias ou mais, 68% da ultima carga, arredondada para
+baixo em anilhas. Exemplo: 61 kg x5 parado ha 35 dias vira 33 kg para 3x12.
 
 Se nao houver historico para o exercicio, o alvo aparece como `-`. Registre
 sempre a carga real feita; ela sera a base do proximo alvo.

@@ -12,12 +12,13 @@ SESSION_FILE = Path(__file__).resolve().parents[1] / "session.json"
 TRAINING_EXERCISES = range(0, 11)
 TREINO_EXERCISES = TRAINING_EXERCISES
 # Progressao cautelosa para series de 12-15 repeticoes: no maximo um passo de
-# anilha (2 kg) por sessao, mesmo com RPE 7 ou menor.
+# anilha (2 kg) por sessao, mesmo com RPE 7 ou menor. Falha (RPE 10) desce dois
+# passos; nos exercicios com carga por mao a descida fica em um passo.
 RPE_PROGRESSION_KG = {
     7: 2.0,
     8: 2.0,
     9: 0.0,
-    10: -2.0,
+    10: -4.0,
 }
 
 INITIAL_TARGET_WEIGHTS = {
@@ -25,9 +26,9 @@ INITIAL_TARGET_WEIGHTS = {
     "Rosca inversa (barra)": 11.0,
     "Rosca de punho atrás das costas (barra)": 11.0,
     "Supino inclinado (barra)": 41.0,
-    "Elevação lateral": 4.0,
-    "Remada apoiada no banco (barras 40 cm)": 14.0,
-    "Crucifixo invertido apoiado (barras 40 cm)": 4.0,
+    "Elevação lateral": 2.0,
+    "Remada apoiada no banco (barras 40 cm)": 12.0,
+    "Crucifixo invertido apoiado (barras 40 cm)": 2.0,
 }
 
 TRAINING_B_RULES = (
@@ -135,8 +136,10 @@ RETURN_AFTER_DAYS = 10
 RETURN_REDUCTION_KG = 4.0
 # Pausa longa: parado ha RETURN_LONG_AFTER_DAYS dias ou mais, a carga volta a
 # RETURN_LONG_FACTOR da ultima (ja convertida por reps), arredondada para baixo.
+# 68% porque 80% levou a falha na volta de 2026-10-26 (Epley superestima a carga
+# de 12-15 reps de quem treinava 5-8).
 RETURN_LONG_AFTER_DAYS = 21
-RETURN_LONG_FACTOR = 0.80
+RETURN_LONG_FACTOR = 0.68
 
 LOAD_EQUIPMENT = {
     "Agachamento com barra nas costas": {
@@ -252,7 +255,10 @@ def suggest_next_weight(previous_weight, previous_rpe=None, previous_reps=None,
         delta = RPE_PROGRESSION_KG[10]
     else:
         delta = RPE_PROGRESSION_KG.get(rpe, 0.0)
-    return float(previous_weight) + delta
+    equipment = LOAD_EQUIPMENT.get(exercise_name) or {}
+    if equipment.get("per_hand"):
+        delta = max(delta, -PLATE_STEP_KG)
+    return max(float(previous_weight) + delta, equipment.get("weight", 0.0))
 
 
 def round_down_to_plates(weight, exercise_name=None):

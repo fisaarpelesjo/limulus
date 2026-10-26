@@ -350,7 +350,7 @@ da serie de topo:
 RPE 7 ou menor  -> +2 kg
 RPE 8           -> +2 kg
 RPE 9           -> manter
-RPE 10 ou maior -> -2 kg
+RPE 10 ou maior -> -4 kg (carga por mao: -2 kg)
 Sem RPE         -> manter
 ```
 
@@ -362,9 +362,9 @@ sessao. Exemplo: 61 kg x5 vira 49 kg para 3x12.
 Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
 (`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
 (`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
-barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 80%
+barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 68%
 (`RETURN_LONG_FACTOR`) da ultima carga, arredondado para baixo em anilhas.
-Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12. Se as reps mudaram,
+Exemplo: 61 kg x5 parado ha 35 dias vira 33 kg para 3x12. Se as reps mudaram,
 a conversao vem antes. Na sessao seguinte a progressao por RPE volta ao normal.
 
 Piramide crescente: `ods_ops.get_set_weights(nome, alvo, series)` gera 80% ->
@@ -500,8 +500,8 @@ Mapeamento atual:
   levantamento terra romeno e remada curvada alta no peito;
 - barra W de 6 kg: tríceps testa, pullover e rosca direta;
 - duas barras ocas de 40 cm, uma em cada mao: elevacao lateral (alvo inicial
-  4 kg por mao), remada apoiada no banco (14 kg por mao) e crucifixo
-  invertido apoiado (4 kg por mao), todos com carga registrada por mao;
+  2 kg por mao), remada apoiada no banco (12 kg por mao) e crucifixo
+  invertido apoiado (2 kg por mao), todos com carga registrada por mao;
 - barra reta de 2,20 m e 11 kg: rosca inversa.
 
 A observacao aparece no exercicio atual/proximo e no `/status`; nao aparece na

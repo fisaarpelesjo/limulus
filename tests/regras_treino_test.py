@@ -20,8 +20,8 @@ def _assert_progressao():
     assert ods_ops.suggest_next_weight(40, 6) == 42
     assert ods_ops.suggest_next_weight(40, 8) == 42
     assert ods_ops.suggest_next_weight(40, 9) == 40
-    assert ods_ops.suggest_next_weight(40, 10) == 38
-    assert ods_ops.suggest_next_weight(40, 11) == 38
+    assert ods_ops.suggest_next_weight(40, 10) == 36
+    assert ods_ops.suggest_next_weight(40, 11) == 36
     assert ods_ops.suggest_next_weight(40, None) == 40
     assert ods_ops.suggest_next_weight(None, 8) is None
     # Mudanca de repeticoes converte a carga pelo 1RM estimado.
@@ -34,11 +34,14 @@ def _assert_progressao():
     assert ods_ops.suggest_next_weight(81, 8, 8, 8, "Levantamento Terra Romeno", 9) == 83
     assert ods_ops.suggest_next_weight(61, 9, 5, 8, "Supino reto (barra)", 15) == 51
     assert ods_ops.suggest_next_weight(13, 9, 12, 12, "Rosca inversa (barra)", 15) == 11
-    # Pausa longa (21+ dias): 80% da carga convertida, arredondada em anilhas.
+    # Pausa longa (21+ dias): 68% da carga convertida, arredondada em anilhas.
     assert ods_ops.suggest_next_weight(81, 9, 8, 8, "Levantamento Terra Romeno", 20) == 77
-    assert ods_ops.suggest_next_weight(81, 9, 8, 8, "Levantamento Terra Romeno", 21) == 63
-    assert ods_ops.suggest_next_weight(61, 8, 5, 12, "Supino reto (barra)", 35) == 39
-    assert ods_ops.suggest_next_weight(24, 8, 8, 15, "Tríceps testa", 115) == 16
+    assert ods_ops.suggest_next_weight(81, 9, 8, 8, "Levantamento Terra Romeno", 21) == 55
+    assert ods_ops.suggest_next_weight(61, 8, 5, 12, "Supino reto (barra)", 35) == 33
+    assert ods_ops.suggest_next_weight(24, 8, 8, 15, "Tríceps testa", 115) == 12
+    # Carga por mao desce no maximo um passo de anilha, sem ficar negativa.
+    assert ods_ops.suggest_next_weight(4, 10, 15, 15, "Elevação lateral") == 2
+    assert ods_ops.suggest_next_weight(2, 10, 15, 15, "Elevação lateral") == 0
     # Piramide crescente ate o alvo, arredondada em anilhas de 2 kg.
     assert ods_ops.get_set_weights("Supino reto (barra)", 57, 3) == [45, 51, 57]
     assert ods_ops.get_set_weights("Tríceps testa", 18, 3) == [14, 16, 18]
@@ -50,8 +53,8 @@ def _assert_equipamento_e_descanso():
     assert ods_ops.get_initial_target_weight("Rosca inversa (barra)") == 11
     assert ods_ops.get_initial_target_weight("Rosca de punho atrás das costas (barra)") == 11
     assert ods_ops.get_initial_target_weight("Supino inclinado (barra)") == 41
-    assert ods_ops.get_initial_target_weight("Elevação lateral") == 4
-    assert ods_ops.get_initial_target_weight("Remada apoiada no banco (barras 40 cm)") == 14
+    assert ods_ops.get_initial_target_weight("Elevação lateral") == 2
+    assert ods_ops.get_initial_target_weight("Remada apoiada no banco (barras 40 cm)") == 12
     assert ods_ops.get_display_name("Remada apoiada no banco (barras 40 cm)") == "Remada apoiada no banco"
     assert ods_ops.get_rest_interval("Crucifixo invertido apoiado (barras 40 cm)") == "60 s"
     assert ods_ops.get_set_weights("Remada apoiada no banco (barras 40 cm)", 14, 3) == [10, 12, 14]

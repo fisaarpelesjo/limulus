@@ -242,8 +242,10 @@ Regras importantes:
   montagem com barra reta 2,50 m de 9 kg para remada com barra e barra de 40 cm
   para farmer walk, e nao registra RPE.
 - Progressao por RPE (cautelosa, para series de 12-15 reps): RPE 7 ou menor
-  `+2 kg`, RPE 8 `+2 kg`, RPE 9 mantem, RPE 10 ou maior `-2 kg`, sem RPE
-  mantem. Nunca sobe mais de um passo de anilha (2 kg) por sessao.
+  `+2 kg`, RPE 8 `+2 kg`, RPE 9 mantem, RPE 10 ou maior `-4 kg`, sem RPE
+  mantem. Nunca sobe mais de um passo de anilha (2 kg) por sessao. Nos
+  exercicios com carga por mao (`per_hand`), RPE 10 desce so `-2 kg` e o alvo
+  nao fica abaixo da barra.
 - Piramide crescente: `get_set_weights(nome, alvo, series)` gera 80% -> 90% ->
   100% do alvo; series intermediarias sao arredondadas para baixo em anilhas de
   2 kg acima da barra (`round_down_to_plates`). A ultima serie e a de topo: o
@@ -260,9 +262,9 @@ Regras importantes:
   partir de `training_sessions.date` do ultimo log ate a data da sessao nova
   (ou da sessao recuperada), via `ods_ops.days_between()`.
 - Pausa longa: com `RETURN_LONG_AFTER_DAYS` (21) dias ou mais, o alvo vira
-  `RETURN_LONG_FACTOR` (80%) da ultima carga, ja convertida por reps, e e
+  `RETURN_LONG_FACTOR` (68%) da ultima carga, ja convertida por reps, e e
   arredondado para baixo em anilhas, em vez de tirar 4 kg. Exemplo: 61 kg x5
-  parado ha 35 dias vira 39 kg para 3x12. Motivo: retorno cauteloso apos um
+  parado ha 35 dias vira 33 kg para 3x12. Motivo: retorno cauteloso apos um
   mes parado por crise de enxaqueca, preferindo carga leve e mais reps.
 - RPE 9 nao representa estagnacao automaticamente. Manter a carga nesse nivel
   faz parte do metodo para consolidar tecnica, amplitude, controle e qualidade
@@ -324,10 +326,10 @@ Regras importantes:
     brucos no banco inclinado, com uma barra de 40 cm em cada mao.
   - `Elevação lateral` usa duas barras ocas de 40 cm, uma em cada mao, com
     peso desprezivel (`weight` 0). A carga registrada e por mao e o alvo
-    inicial e 4 kg por mao. Com anilha minima de 1 kg, o passo de 2 kg por mao
+    inicial e 2 kg por mao. Com anilha minima de 1 kg, o passo de 2 kg por mao
     equivale a 1 kg em cada ponta. `Rosca direta` usa barra W de 6 kg.
-  - `Remada apoiada no banco (barras 40 cm)` (alvo inicial 14 kg por mao, 90 s) e
-    `Crucifixo invertido apoiado (barras 40 cm)` (alvo inicial 4 kg por mao, 60 s) usam
+  - `Remada apoiada no banco (barras 40 cm)` (alvo inicial 12 kg por mao, 90 s) e
+    `Crucifixo invertido apoiado (barras 40 cm)` (alvo inicial 2 kg por mao, 60 s) usam
     o mesmo equipamento `per_hand` da elevacao lateral. `get_display_name()`
     exibe os dois sem o sufixo `(barras 40 cm)`, e os grupos musculares
     ficam em `DEFAULT_MUSCLE_GROUPS` (dorsais; deltoide posterior).

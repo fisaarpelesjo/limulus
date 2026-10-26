@@ -358,7 +358,7 @@ mais recentes por exercicio. Durante `ods_ops.generate_training()`, cada exercic
 RPE 7 ou menor  -> ultima carga + 2 kg
 RPE 8           -> ultima carga + 2 kg
 RPE 9           -> ultima carga
-RPE 10 ou maior -> ultima carga - 2 kg
+RPE 10 ou maior -> ultima carga - 4 kg (carga por mao: - 2 kg)
 Sem RPE         -> ultima carga
 ```
 
@@ -381,9 +381,9 @@ para 3x12.
 Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
 (`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
 (`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
-barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 80%
+barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 68%
 (`RETURN_LONG_FACTOR`) da ultima carga, arredondado para baixo em anilhas.
-Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12. Se as reps mudaram,
+Exemplo: 61 kg x5 parado ha 35 dias vira 33 kg para 3x12. Se as reps mudaram,
 a conversao vem antes. Na sessao seguinte a progressao por RPE volta ao normal.
 
 Piramide crescente: `ods_ops.get_set_weights()` divide o alvo em 80% -> 90% ->
@@ -397,9 +397,9 @@ a tabela do bot mostra `-`.
 
 Na `Elevação lateral`, o equipamento tem `per_hand`: sao duas barras ocas de
 40 cm (peso 0), uma em cada mao, e a carga registrada e por mao, com alvo
-inicial de 4 kg por mao. A observacao fica `barra de 40 cm em cada mao + Xkg de
+inicial de 2 kg por mao. A observacao fica `barra de 40 cm em cada mao + Xkg de
 anilhas por mao`. `Remada apoiada no banco (barras 40 cm)` (alvo inicial 14 kg
-por mao) e `Crucifixo invertido apoiado (barras 40 cm)` (alvo inicial 4 kg por
+por mao) e `Crucifixo invertido apoiado (barras 40 cm)` (alvo inicial 2 kg por
 mao) usam o mesmo equipamento `per_hand`.
 
 Excecoes atuais: `Rosca inversa (barra)` recebe alvo inicial de 11 kg e
