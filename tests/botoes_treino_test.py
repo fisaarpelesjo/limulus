@@ -29,12 +29,12 @@ def main():
                     conn.execute("INSERT INTO training_sessions (date, training_type) VALUES ('2020-01-01', 'TREINO')")
                 conn.close()
             db_ops.init_db()
-            assert db_ops.get_schema_version() == 14
+            assert db_ops.get_schema_version() == 15
             nomes = {p['name']: p for p in db_ops.list_training_plans()}
-            assert {'A', 'B'} <= set(nomes) and nomes['A']['active']
+            assert {'A', 'B', 'C', 'D', 'E'} <= set(nomes) and nomes['A']['active']
             assert db_ops.get_session_timing(1) == {'started_at': None, 'completed_at': None}
-            # Concluir A ativa B, e concluir B volta para A.
-            for plano in ('A', 'B'):
+            # A rotação segue A-E e, ao concluir E, volta para A.
+            for plano in ('A', 'B', 'C', 'D', 'E'):
                 assert db_ops.get_active_training_plan()['name'] == plano
                 previous, previous_id = ods_ops.generate_training()
                 for ex in previous:
@@ -47,9 +47,9 @@ def main():
             assert 'Horário:' in messages[0][0] and 'Brasília' in messages[0][0]
             assert 'Treino de hoje' not in messages[0][0]
             text, kwargs = messages[-1]
-            assert '<b>AGACHAMENTO COM BARRA NAS COSTAS</b>\n\n' in text
+            assert '<b>SUPINO RETO</b>\n\n' in text
             assert '1ª série: <b>54 kg</b> anilhas\n2ª série: <b>62 kg</b> anilhas\n3ª série: <b>71 kg</b> anilhas' in text
-            assert 'Repetições: <b>8</b>' in text
+            assert 'Repetições: <b>12</b>' in text
             assert '<i>Barra: 2,20 m · 11 kg</i>' in text
             assert '<i>Total com barra: 65 · 73 · 82 kg</i>' in text
             keyboard = kwargs['reply_markup']['inline_keyboard'][0]

@@ -99,13 +99,14 @@ Planos de treino:
 ```text
 /planos
 /plano A
-/plano B
+/plano C
 /plano Forca
 ```
 
-Os planos `A` e `B` (hipertrofia e emagrecimento, cerca de 60 min, 3 treinos
-por semana) alternam sozinhos: ao concluir uma sessao do plano ativo, o outro
-passa a ser o ativo. `/plano NOME` troca manualmente. `Forca` e o antigo plano
+Os planos `A` a `E` (segunda a sexta, cerca de 32-37 min, emagrecimento e
+definicao) alternam sozinhos: ao concluir uma sessao do plano ativo, o seguinte
+da sequencia A, B, C, D, E passa a ser o ativo, e depois do E volta o A. Se um
+dia for perdido, o proximo treino continua de onde parou. `/plano NOME` troca manualmente. `Forca` e o antigo plano
 `A` de 11 exercicios com foco em forca; fica inativo e nao entra na rotacao.
 
 Para atualizar o dashboard pelo celular:
@@ -141,7 +142,7 @@ Ao gerar treino, o bot sugere a proxima carga usando a ultima carga registrada
 no exercicio e o RPE:
 
 ```text
-RPE 7 ou menor  -> +4 kg
+RPE 7 ou menor  -> +2 kg
 RPE 8           -> +2 kg
 RPE 9           -> manter
 RPE 10 ou maior -> -2 kg
@@ -167,8 +168,12 @@ Proximo /gerar: alvo 38 kg
 
 O alvo e a carga da ultima serie (topo); as anteriores usam cerca de 80% e 90%
 dele, arredondadas para baixo em anilhas de 2 kg. Se as repeticoes do plano
-mudaram desde o ultimo registro (por exemplo de 3x5 para 3x8), o alvo e
-convertido pelo 1RM estimado: 61 kg x5 vira 55 kg para 3x8.
+mudaram desde o ultimo registro (por exemplo de 3x5 para 3x12), o alvo e
+convertido pelo 1RM estimado: 61 kg x5 vira 49 kg para 3x12.
+
+Depois de uma pausa, o alvo fica mais leve: de 10 a 20 dias parado, a ultima
+carga menos 4 kg; com 21 dias ou mais, 80% da ultima carga, arredondada para
+baixo em anilhas. Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12.
 
 Se nao houver historico para o exercicio, o alvo aparece como `-`. Registre
 sempre a carga real feita; ela sera a base do proximo alvo.
@@ -179,10 +184,10 @@ O `/gerar` mostra descanso fixo sugerido por exercicio. Use esses tempos como
 base para preservar a qualidade tecnica:
 
 ```text
-Agachamento com barra nas costas, supino reto, back-off e terra romeno: 3 min
-Supino inclinado e remada curvada: 2 min
-Desenvolvimento, remada curvada alta no peito e agachamento sumô: 90 s
-Triceps testa, roscas e pullover: 60 s
+Agachamento com barra nas costas e back-off: 3 min
+Agachamento Zercher, supino reto e terra romeno: 2 min
+Supino inclinado, remada curvada, desenvolvimento, remada curvada alta no peito, remada apoiada no banco e agachamento sumô: 90 s
+Triceps testa, roscas, pullover e elevacao lateral: 60 s
 Demais exercicios: 2 min
 ```
 
@@ -274,19 +279,30 @@ Nao substituir a fonte da verdade SQLite por planilha.
 
 Catalogo atual:
 
-- Plano `A`: `Agachamento com barra nas costas` 3x8, `Supino reto (barra)` 3x8,
-  `Remada curvada (barra)` 3x10, `Desenvolvimento (barra em pé)` 3x10,
-  `Tríceps testa` 3x12 e `Rosca inversa (barra)` 3x12.
-- Plano `B`: `Levantamento Terra Romeno` 3x8, `Supino inclinado (barra)` 3x10,
-  `Remada curvada (barra)` 3x10, `Agachamento sumô com barra à frente` 3x12,
-  `Remada curvada alta no peito (barra)` 3x12 e `Rosca de punho atrás das
-  costas (barra)` 3x12.
+- Plano `A` (segunda, empurrar): `Supino reto (barra)` 3x12, `Supino inclinado
+  (barra)` 3x12, `Desenvolvimento (barra em pé)` 3x12, `Elevação lateral` 4x15 e
+  `Tríceps testa` 3x15.
+- Plano `B` (terca, puxar): `Remada curvada (barra)` 3x12, `Remada curvada alta
+  no peito (barra)` 3x15, `Pullover (barra)` 3x15, `Rosca direta` 3x15 e
+  `Rosca inversa (barra)` 3x15.
+- Plano `C` (quarta, inferior): `Agachamento Zercher` 3x12, `Levantamento Terra
+  Romeno` 3x12, `Agachamento sumô com barra à frente` 3x12 e `Rosca de punho
+  atrás das costas (barra)` 3x15.
+- Plano `D` (quinta, empurrar): `Supino inclinado (barra)` 3x12, `Supino reto
+  (barra)` 3x12, `Desenvolvimento (barra em pé)` 3x12, `Elevação lateral` 4x15 e
+  `Tríceps testa` 3x15.
+- Plano `E` (sexta, puxar): `Remada apoiada no banco (barras 40 cm)` 3x12,
+  `Pullover (barra)` 3x15, `Levantamento Terra Romeno` 3x12,
+  `Crucifixo invertido apoiado (barras 40 cm)` 3x15 e `Rosca direta` 3x15. A remada
+  e o crucifixo sao feitos deitado de brucos no banco inclinado, com uma
+  barra de 40 cm em cada mao, para poupar a lombar.
 - Plano `Forca`: antigo plano `A` de 11 exercicios, inativo.
-- O agachamento usa a barra apoiada no trapezio/ombro.
+- O agachamento dos planos A a E e o Zercher, sem barra atras da nuca.
+- Cada exercicio usa as mesmas series e repeticoes em todos os dias.
 - `Supino fechado (barra)` e `Remada alta (barra)` estao inativos para sessoes futuras.
 - Historico antigo pode continuar com nomes antigos ou inativos.
 - Se o catalogo mudar de novo, atualizar `data/limulus.db` e `limulus/db_ops.py`
-  (`DEFAULT_EXERCISES` para o plano A, `PLAN_B_EXERCISES` para o B).
+  (`DEFAULT_EXERCISES` para o plano A, `WEEKLY_PLANS` para A a E).
 
 ## Problemas Comuns
 

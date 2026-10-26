@@ -185,9 +185,12 @@ def _format_current_exercise(ex):
     set_weights = ods_ops.get_set_weights(ex["name"], target, ex["sets"])
     body = []
     bar_weight = equipment["weight"] if equipment else 0.0
+    per_hand = bool(equipment and equipment.get("per_hand"))
     for idx, weight in enumerate(set_weights, start=1):
         load = max(weight - bar_weight, 0.0) if equipment else weight
         label = "anilhas" if equipment else "carga"
+        if per_hand:
+            label += " por mão"
         body.append(f"{idx}ª série: <b>{_format_weight(load)} kg</b> {label}")
     if not set_weights:
         body.append(f"Séries: <b>{ex['sets']}</b>")
@@ -197,13 +200,19 @@ def _format_current_exercise(ex):
     ])
     footer = []
     if equipment:
-        bar_name = equipment['name'].replace('barra reta ', '').removeprefix('barra ')
+        bar_name = (
+            equipment['name'].replace('barra reta ', '').removeprefix('barra ').removeprefix('de ')
+        )
         footer.append(
-            f"<i>Barra: {escape(bar_name)} · {_format_weight(equipment['weight'])} kg</i>"
+            f"<i>Barra: {escape(bar_name)} · {_format_weight(equipment['weight'])} kg"
+            f"{' (uma em cada mão)' if per_hand else ''}</i>"
         )
     if target is not None:
+        total_label = "Total com barra" if equipment else "Carga total"
+        if per_hand:
+            total_label = "Total por mão"
         footer.append(
-            f"<i>{'Total com barra' if equipment else 'Carga total'}: "
+            f"<i>{total_label}: "
             f"{' · '.join(_format_weight(w) for w in set_weights)} kg</i>"
         )
         footer.append("<i>RPE da última série</i>")

@@ -8,33 +8,58 @@ from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DB_PATH = DATA_DIR / "limulus.db"
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 def agora_brasilia():
     return datetime.now(timezone(timedelta(hours=-3)))
 
 
+# Divisao semanal de segunda a sexta (schema 15), cerca de 40 min por sessao:
+# A empurrar, B puxar, C inferior, D empurrar e E puxar.
+# Cada exercicio usa sempre as mesmas repeticoes em todos os dias, para que a
+# progressao por RPE nao seja trocada pela conversao por repeticoes.
 DEFAULT_EXERCISES = [
-    {"name": "Agachamento com barra nas costas", "sets": 3, "reps": 8},
-    {"name": "Supino reto (barra)", "sets": 3, "reps": 8},
-    {"name": "Remada curvada (barra)", "sets": 3, "reps": 10},
-    {"name": "Desenvolvimento (barra em pé)", "sets": 3, "reps": 10},
-    {"name": "Tríceps testa", "sets": 3, "reps": 12},
-    {"name": "Rosca inversa (barra)", "sets": 3, "reps": 12},
+    {"name": "Supino reto (barra)", "sets": 3, "reps": 12},
+    {"name": "Supino inclinado (barra)", "sets": 3, "reps": 12},
+    {"name": "Desenvolvimento (barra em pé)", "sets": 3, "reps": 12},
+    {"name": "Elevação lateral", "sets": 4, "reps": 15},
+    {"name": "Tríceps testa", "sets": 3, "reps": 15},
 ]
 
-PLAN_B_EXERCISES = [
-    {"name": "Levantamento Terra Romeno", "sets": 3, "reps": 8},
-    {"name": "Supino inclinado (barra)", "sets": 3, "reps": 10},
-    {"name": "Remada curvada (barra)", "sets": 3, "reps": 10},
-    {"name": "Agachamento sumô com barra à frente", "sets": 3, "reps": 12},
-    {"name": "Remada curvada alta no peito (barra)", "sets": 3, "reps": 12},
-    {"name": "Rosca de punho atrás das costas (barra)", "sets": 3, "reps": 12},
-]
+WEEKLY_PLANS = {
+    "A": DEFAULT_EXERCISES,
+    "B": [
+        {"name": "Remada curvada (barra)", "sets": 3, "reps": 12},
+        {"name": "Remada curvada alta no peito (barra)", "sets": 3, "reps": 15},
+        {"name": "Pullover (barra)", "sets": 3, "reps": 15},
+        {"name": "Rosca direta", "sets": 3, "reps": 15},
+        {"name": "Rosca inversa (barra)", "sets": 3, "reps": 15},
+    ],
+    "C": [
+        {"name": "Agachamento Zercher", "sets": 3, "reps": 12},
+        {"name": "Levantamento Terra Romeno", "sets": 3, "reps": 12},
+        {"name": "Agachamento sumô com barra à frente", "sets": 3, "reps": 12},
+        {"name": "Rosca de punho atrás das costas (barra)", "sets": 3, "reps": 15},
+    ],
+    "D": [
+        {"name": "Supino inclinado (barra)", "sets": 3, "reps": 12},
+        {"name": "Supino reto (barra)", "sets": 3, "reps": 12},
+        {"name": "Desenvolvimento (barra em pé)", "sets": 3, "reps": 12},
+        {"name": "Elevação lateral", "sets": 4, "reps": 15},
+        {"name": "Tríceps testa", "sets": 3, "reps": 15},
+    ],
+    "E": [
+        {"name": "Remada apoiada no banco (barras 40 cm)", "sets": 3, "reps": 12},
+        {"name": "Pullover (barra)", "sets": 3, "reps": 15},
+        {"name": "Levantamento Terra Romeno", "sets": 3, "reps": 12},
+        {"name": "Crucifixo invertido apoiado (barras 40 cm)", "sets": 3, "reps": 15},
+        {"name": "Rosca direta", "sets": 3, "reps": 15},
+    ],
+}
 
 # Planos que alternam automaticamente ao concluir uma sessao.
-PLAN_ROTATION = {"A": "B", "B": "A"}
+PLAN_ROTATION = {"A": "B", "B": "C", "C": "D", "D": "E", "E": "A"}
 
 DEFAULT_MUSCLE_GROUPS = {
     "Agachamento (barra)": [
@@ -86,6 +111,15 @@ DEFAULT_MUSCLE_GROUPS = {
         ("Trapezio", "secundario"),
     ],
     "Remada curvada alta no peito (barra)": [
+        ("Deltoide posterior", "principal"),
+        ("Trapezio", "secundario"),
+    ],
+    "Remada apoiada no banco (barras 40 cm)": [
+        ("Dorsais", "principal"),
+        ("Trapezio", "secundario"),
+        ("Biceps", "secundario"),
+    ],
+    "Crucifixo invertido apoiado (barras 40 cm)": [
         ("Deltoide posterior", "principal"),
         ("Trapezio", "secundario"),
     ],
@@ -466,6 +500,53 @@ SCHEMA_V14_STATEMENTS = (
     "UPDATE training_plans SET active = CASE WHEN name = 'A' THEN 1 ELSE 0 END",
 )
 
+SCHEMA_V15_STATEMENTS = (
+    """
+    INSERT OR IGNORE INTO training_plans (name, active, sort_order)
+    VALUES ('C', 0, 2), ('D', 0, 3), ('E', 0, 4)
+    """,
+    "UPDATE training_plans SET sort_order = 5 WHERE name = 'Forca'",
+    """
+    DELETE FROM training_plan_exercises
+    WHERE plan_id IN (
+        SELECT id FROM training_plans WHERE name IN ('A', 'B', 'C', 'D', 'E')
+    )
+    """,
+    """
+    INSERT INTO training_plan_exercises
+        (plan_id, exercise_name, sets, reps, sort_order)
+    SELECT p.id, v.column2, v.column3, v.column4, v.column5
+    FROM training_plans AS p
+    JOIN (VALUES
+        ('A', 'Supino reto (barra)', 3, 12, 0),
+        ('A', 'Supino inclinado (barra)', 3, 12, 1),
+        ('A', 'Desenvolvimento (barra em pé)', 3, 12, 2),
+        ('A', 'Elevação lateral', 4, 15, 3),
+        ('A', 'Tríceps testa', 3, 15, 4),
+        ('B', 'Remada curvada (barra)', 3, 12, 0),
+        ('B', 'Remada curvada alta no peito (barra)', 3, 15, 1),
+        ('B', 'Pullover (barra)', 3, 15, 2),
+        ('B', 'Rosca direta', 3, 15, 3),
+        ('B', 'Rosca inversa (barra)', 3, 15, 4),
+        ('C', 'Agachamento Zercher', 3, 12, 0),
+        ('C', 'Levantamento Terra Romeno', 3, 12, 1),
+        ('C', 'Agachamento sumô com barra à frente', 3, 12, 2),
+        ('C', 'Rosca de punho atrás das costas (barra)', 3, 15, 3),
+        ('D', 'Supino inclinado (barra)', 3, 12, 0),
+        ('D', 'Supino reto (barra)', 3, 12, 1),
+        ('D', 'Desenvolvimento (barra em pé)', 3, 12, 2),
+        ('D', 'Elevação lateral', 4, 15, 3),
+        ('D', 'Tríceps testa', 3, 15, 4),
+        ('E', 'Remada apoiada no banco (barras 40 cm)', 3, 12, 0),
+        ('E', 'Pullover (barra)', 3, 15, 1),
+        ('E', 'Levantamento Terra Romeno', 3, 12, 2),
+        ('E', 'Crucifixo invertido apoiado (barras 40 cm)', 3, 15, 3),
+        ('E', 'Rosca direta', 3, 15, 4)
+    ) AS v ON v.column1 = p.name
+    """,
+    "UPDATE training_plans SET active = CASE WHEN name = 'A' THEN 1 ELSE 0 END",
+)
+
 MIGRATIONS = {
     1: SCHEMA_V1_STATEMENTS,
     2: SCHEMA_V2_STATEMENTS,
@@ -481,6 +562,7 @@ MIGRATIONS = {
     12: SCHEMA_V12_STATEMENTS,
     13: SCHEMA_V13_STATEMENTS,
     14: SCHEMA_V14_STATEMENTS,
+    15: SCHEMA_V15_STATEMENTS,
 }
 
 
@@ -1017,7 +1099,7 @@ def _atualizar_fim(conn, session_id):
 
 
 def _alternar_plano(conn, session_id):
-    """Ativa o proximo plano da rotacao A/B quando a sessao concluida era do plano ativo."""
+    """Ativa o proximo plano da rotacao A-E quando a sessao concluida era do plano ativo."""
     row = conn.execute(
         "SELECT s.training_type FROM training_sessions s "
         "JOIN training_plans p ON p.name = s.training_type AND p.active = 1 "

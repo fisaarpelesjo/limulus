@@ -13,7 +13,7 @@ dados de dieta.
 
 ## Versao E Migracoes
 
-O esquema atual usa `SCHEMA_VERSION = 14`. A tabela `schema_migrations` registra
+O esquema atual usa `SCHEMA_VERSION = 15`. A tabela `schema_migrations` registra
 uma linha por versao aplicada, com data e hora.
 
 `db_ops.init_db()`:
@@ -261,26 +261,49 @@ cintura/altura. Esses valores sao indicadores derivados e nao diagnosticos.
 
 ## Catalogo Atual
 
-Planos com foco em hipertrofia e emagrecimento, cerca de 60 min, 3 treinos por
-semana alternando A/B:
+Planos do schema 15, divisao de segunda a sexta com cerca de 32-37 min por
+sessao, foco em emagrecimento e definicao. Rotacao automatica A, B, C, D, E e
+volta para A ao concluir cada sessao:
 
 ```text
-Plano A
-1. Agachamento com barra nas costas        3x8
-2. Supino reto (barra)                     3x8
-3. Remada curvada (barra)                  3x10
-4. Desenvolvimento (barra em pé)           3x10
-5. Tríceps testa                           3x12
-6. Rosca inversa (barra)                   3x12
+Plano A (segunda, empurrar)
+1. Supino reto (barra)                      3x12
+2. Supino inclinado (barra)                 3x12
+3. Desenvolvimento (barra em pé)            3x12
+4. Elevação lateral                         4x15
+5. Tríceps testa                            3x15
 
-Plano B
-1. Levantamento Terra Romeno               3x8
-2. Supino inclinado (barra)                3x10
-3. Remada curvada (barra)                  3x10
-4. Agachamento sumô com barra à frente     3x12
-5. Remada curvada alta no peito (barra)    3x12
-6. Rosca de punho atrás das costas (barra) 3x12
+Plano B (terca, puxar)
+1. Remada curvada (barra)                   3x12
+2. Remada curvada alta no peito (barra)     3x15
+3. Pullover (barra)                         3x15
+4. Rosca direta                             3x15
+5. Rosca inversa (barra)                    3x15
+
+Plano C (quarta, inferior)
+1. Agachamento Zercher                      3x12
+2. Levantamento Terra Romeno                3x12
+3. Agachamento sumô com barra à frente      3x12
+4. Rosca de punho atrás das costas (barra)  3x15
+
+Plano D (quinta, empurrar)
+1. Supino inclinado (barra)                 3x12
+2. Supino reto (barra)                      3x12
+3. Desenvolvimento (barra em pé)            3x12
+4. Elevação lateral                         4x15
+5. Tríceps testa                            3x15
+
+Plano E (sexta, puxar)
+1. Remada apoiada no banco (barras 40 cm)    3x12
+2. Pullover (barra)                         3x15
+3. Levantamento Terra Romeno                3x12
+4. Crucifixo invertido apoiado (barras 40 cm)  3x15
+5. Rosca direta                             3x15
 ```
+
+Cada exercicio usa as mesmas series e repeticoes em todos os dias em que
+aparece, para a progressao por RPE nao ser trocada pela conversao por
+repeticoes.
 
 O plano `Forca` guarda a sequencia antiga de 11 exercicios (agachamento 3x5,
 sumô 3x10, supino reto 3x5, back-off 3x8, supino inclinado 3x8, remada curvada
@@ -288,17 +311,19 @@ sumô 3x10, supino reto 3x5, back-off 3x8, supino inclinado 3x8, remada curvada
 inversa 3x8 e rosca de punho 3x12). Fica inativo e pode ser selecionado com
 `/plano Forca`.
 
-O agachamento usa a barra apoiada no trapezio/ombro. `Supino fechado (barra)` e
-`Remada alta (barra)` estao inativos para sessoes futuras. Historico antigo de
-`Agachamento Zercher`, `Rosca direta`, `Rosca martelo (barra H)`, `Supino
+O agachamento dos planos A a E e o Zercher (barra na dobra dos cotovelos);
+`Agachamento com barra nas costas` so aparece no plano `Forca` e no historico.
+Logs antigos de `Agachamento Zercher` voltam a alimentar a progressao.
+`Supino fechado (barra)` e `Remada alta (barra)` estao inativos para sessoes
+futuras. Historico antigo de `Rosca direta`, `Rosca martelo (barra H)`, `Supino
 fechado (barra)` e `Remada alta (barra)` permanece como historico salvo no
 SQLite.
 
 Ao mudar o catalogo para frente, atualize:
 
 - `data/limulus.db`
-- `limulus/db_ops.py`, em `DEFAULT_EXERCISES` (plano A) ou `PLAN_B_EXERCISES`
-  (plano B)
+- `limulus/db_ops.py`, em `DEFAULT_EXERCISES` (plano A) ou `WEEKLY_PLANS`
+  (planos A a E)
 
 ## Criacao De Sessao
 
@@ -330,7 +355,7 @@ mais recentes por exercicio. Durante `ods_ops.generate_training()`, cada exercic
 `target_weight` calculado assim:
 
 ```text
-RPE 7 ou menor  -> ultima carga + 4 kg
+RPE 7 ou menor  -> ultima carga + 2 kg
 RPE 8           -> ultima carga + 2 kg
 RPE 9           -> ultima carga
 RPE 10 ou maior -> ultima carga - 2 kg
@@ -350,14 +375,16 @@ amplitude, o valor isolado nao comprova falta de evolucao.
 Conversao por repeticoes: se as reps do ultimo log do exercicio diferem das reps
 do plano, `suggest_next_weight()` converte a carga pelo 1RM estimado (Epley:
 `1RM = peso x (1 + reps/30)`) e arredonda para baixo em anilhas de 2 kg acima
-da barra, ignorando o delta de RPE nessa sessao. Exemplo: 61 kg x5 vira 55 kg
-para 3x8.
+da barra, ignorando o delta de RPE nessa sessao. Exemplo: 61 kg x5 vira 49 kg
+para 3x12.
 
 Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
 (`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
 (`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
-barra. Se as reps mudaram, a conversao vem antes. Na sessao seguinte a
-progressao por RPE volta ao normal.
+barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 80%
+(`RETURN_LONG_FACTOR`) da ultima carga, arredondado para baixo em anilhas.
+Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12. Se as reps mudaram,
+a conversao vem antes. Na sessao seguinte a progressao por RPE volta ao normal.
 
 Piramide crescente: `ods_ops.get_set_weights()` divide o alvo em 80% -> 90% ->
 100%, com as series intermediarias arredondadas para baixo em anilhas. A ultima
@@ -367,6 +394,13 @@ persistida.
 
 Se nao houver historico de carga para o exercicio, `target_weight` fica `None` e
 a tabela do bot mostra `-`.
+
+Na `Elevação lateral`, o equipamento tem `per_hand`: sao duas barras ocas de
+40 cm (peso 0), uma em cada mao, e a carga registrada e por mao, com alvo
+inicial de 4 kg por mao. A observacao fica `barra de 40 cm em cada mao + Xkg de
+anilhas por mao`. `Remada apoiada no banco (barras 40 cm)` (alvo inicial 14 kg
+por mao) e `Crucifixo invertido apoiado (barras 40 cm)` (alvo inicial 4 kg por
+mao) usam o mesmo equipamento `per_hand`.
 
 Excecoes atuais: `Rosca inversa (barra)` recebe alvo inicial de 11 kg e
 `Supino inclinado (barra)` recebe alvo inicial de 41 kg quando ainda nao houver
@@ -388,7 +422,7 @@ carga, consolidacoes e recordes. Para comparar volume, procura a sessao anterior
 com a mesma sequencia de exercicios preenchidos. Isso evita comparar diretamente
 modelos de treino diferentes.
 
-Para `Tríceps testa` e `Pullover (barra)`, `ods_ops.format_loading_note()` usa
+Para `Tríceps testa`, `Pullover (barra)` e `Rosca direta`, `ods_ops.format_loading_note()` usa
 barra W de 6 kg e calcula as anilhas como
 `target_weight - 6`. Exemplo: `target_weight = 18` gera
 `barra W 6kg + 12kg de anilhas`.
@@ -407,11 +441,12 @@ anilhas como `target_weight - 11`. Exemplo: `target_weight = 18` gera
 
 O descanso sugerido fica em `session.json`, nao em uma tabela SQLite. Ele e
 derivado do nome do exercicio por `ods_ops.get_rest_interval()` durante a geracao
-da sessao. Agachamento com barra nas costas, supino reto, supino reto back-off
-e Terra Romeno usam 3 min; supino inclinado e remada curvada, 2 min;
-desenvolvimento, remada curvada alta no peito e agachamento sumô, 90 s; triceps
-testa, rosca inversa, rosca de punho, pullover, rosca direta e rosca martelo,
-60 s. Os demais usam 2 min.
+da sessao. Agachamento com barra nas costas e supino reto back-off usam 3 min;
+Agachamento Zercher, supino reto e Terra Romeno, 2 min; supino inclinado,
+remada curvada, desenvolvimento, remada curvada alta no peito e agachamento
+sumô, 90 s; triceps
+testa, rosca inversa, rosca de punho, pullover, elevacao lateral, rosca direta
+e rosca martelo, 60 s. Os demais usam 2 min.
 
 ## Progresso
 
@@ -420,7 +455,7 @@ testa, rosca inversa, rosca de punho, pullover, rosca direta e rosca martelo,
 ```text
 filled = 0  -> proximo exercicio exercises[0]
 filled = 1  -> proximo exercicio exercises[1]
-filled = 6  -> treino completo (planos A e B)
+filled = 5  -> treino completo (planos A, B, D e E; o C tem 4 exercicios)
 ```
 
 ## Inspecao Segura

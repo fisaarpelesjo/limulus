@@ -76,22 +76,21 @@ def main():
             total_exercises = len(db_ops.get_active_training_plan()["exercises"])
             assert len(exercises) == total_exercises
             assert exercises[0]["target_weight"] is None
-            assert exercises[0]["rest_interval"] == "3 min"
-            rosca_inversa = next(
+            assert exercises[0]["rest_interval"] == "2 min"
+            supino_inclinado = next(
                 exercise
                 for exercise in exercises
-                if exercise["name"] == "Rosca inversa (barra)"
+                if exercise["name"] == "Supino inclinado (barra)"
             )
-            assert rosca_inversa["name"] == "Rosca inversa (barra)"
-            assert rosca_inversa["target_weight"] == 11.0
-            assert rosca_inversa["rest_interval"] == "60 s"
-            assert rosca_inversa["loading_note"] == "barra reta 2,20 m 11kg + 0kg de anilhas"
-            assert rosca_inversa["reps"] == 12
-            assert "Descanso: <b>3 min</b>" in sent_messages[-1]
+            assert supino_inclinado["target_weight"] == 41.0
+            assert supino_inclinado["rest_interval"] == "90 s"
+            assert supino_inclinado["loading_note"] == "barra reta 2,20 m 11kg + 30kg de anilhas"
+            assert supino_inclinado["reps"] == 12
+            assert "Descanso: <b>2 min</b>" in sent_messages[-1]
             assert "Sessão iniciada" in sent_messages[-2]
             assert "Carga alvo ainda não definida." in sent_messages[-1]
             assert (
-                "<b>AGACHAMENTO COM BARRA NAS COSTAS</b>\n\nSéries: <b>3</b>"
+                "<b>SUPINO RETO</b>\n\nSéries: <b>3</b>"
                 in sent_messages[-1]
             )
 
@@ -132,7 +131,7 @@ def main():
             progressed_first = progressed_session["exercises"][0]
             assert progressed_first["target_weight"] == 82.0
             assert "82" in sent_messages[-1]
-            assert "Descanso: <b>3 min</b>" in sent_messages[-1]
+            assert "Descanso: <b>2 min</b>" in sent_messages[-1]
             assert "1ª série: <b>54 kg</b> anilhas" in sent_messages[-1]
             assert "3ª série: <b>71 kg</b> anilhas" in sent_messages[-1]
             assert "Total com barra: 65 · 73 · 82 kg" in sent_messages[-1]
@@ -161,6 +160,13 @@ def main():
             assert maintained_first["target_weight"] == 80.5
             assert ods_ops.format_loading_note("Tríceps testa", 18.0) == "barra W 6kg + 12kg de anilhas"
             assert ods_ops.format_loading_note("Pullover (barra)", 16.0) == "barra W 6kg + 10kg de anilhas"
+            assert ods_ops.format_loading_note("Rosca direta", 10.0) == "barra W 6kg + 4kg de anilhas"
+            assert ods_ops.format_loading_note("Elevação lateral", 6.0) == "barra de 40 cm em cada mao + 6kg de anilhas por mao"
+            elevacao = {"name": "Elevação lateral", "sets": 4, "reps": 15, "target_weight": 4.0}
+            elevacao_texto = telegram_poller._format_current_exercise(elevacao)
+            assert "4ª série: <b>4 kg</b> anilhas por mão" in elevacao_texto
+            assert "Barra: 40 cm · 0 kg (uma em cada mão)" in elevacao_texto
+            assert "Total por mão: 2 · 2 · 2 · 4 kg" in elevacao_texto
             assert ods_ops.format_loading_note("Rosca inversa (barra)", 19.0) == "barra reta 2,20 m 11kg + 8kg de anilhas"
             assert ods_ops.format_loading_note("Agachamento sumô com barra à frente", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             assert ods_ops.format_loading_note("Supino reto (barra)", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
@@ -181,7 +187,7 @@ def main():
             summary_session = db_ops.create_session("2026-06-10")
             summary_log = db_ops.log_exercise(
                 summary_session,
-                "Agachamento com barra nas costas",
+                "Supino reto (barra)",
                 3,
                 5,
                 0,
@@ -191,7 +197,7 @@ def main():
             assert summary["volume"] == 1207.5
             assert (
                 summary["consolidations"][0]["name"]
-                == "Agachamento com barra nas costas"
+                == "Supino reto (barra)"
             )
             assert summary["volume_delta"] is not None
 

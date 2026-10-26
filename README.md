@@ -25,7 +25,7 @@ comandos fica em [`docs/comandos.md`](docs/comandos.md).
   `temp/dashboard-treino.html`.
 - Backup/exportacao/restauracao: [`gerenciar_dados.py`](gerenciar_dados.py).
 - Extracao de frames: [`gerar_frames.py`](gerar_frames.py).
-- Schema SQLite atual: `SCHEMA_VERSION = 14`, em
+- Schema SQLite atual: `SCHEMA_VERSION = 15`, em
   [`limulus/db_ops.py`](limulus/db_ops.py).
 - Fonte da verdade do treino: SQLite, especialmente `training_plans` e
   `training_plan_exercises`.
@@ -347,7 +347,7 @@ previous_rpe, previous_reps, target_reps, exercise_name)` e se aplica ao alvo
 da serie de topo:
 
 ```text
-RPE 7 ou menor  -> +4 kg
+RPE 7 ou menor  -> +2 kg
 RPE 8           -> +2 kg
 RPE 9           -> manter
 RPE 10 ou maior -> -2 kg
@@ -357,13 +357,15 @@ Sem RPE         -> manter
 Se as reps do ultimo log do exercicio diferem das reps do plano, a carga e
 convertida pelo 1RM estimado (Epley: `1RM = peso x (1 + reps/30)`) e arredondada
 para baixo em anilhas de 2 kg acima da barra, ignorando o delta de RPE nessa
-sessao. Exemplo: 61 kg x5 vira 55 kg para 3x8.
+sessao. Exemplo: 61 kg x5 vira 49 kg para 3x12.
 
 Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
 (`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
 (`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
-barra. Se as reps mudaram, a conversao vem antes. Na sessao seguinte a
-progressao por RPE volta ao normal.
+barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 80%
+(`RETURN_LONG_FACTOR`) da ultima carga, arredondado para baixo em anilhas.
+Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12. Se as reps mudaram,
+a conversao vem antes. Na sessao seguinte a progressao por RPE volta ao normal.
 
 Piramide crescente: `ods_ops.get_set_weights(nome, alvo, series)` gera 80% ->
 90% -> 100% do alvo, com as series intermediarias arredondadas para baixo em
@@ -394,30 +396,54 @@ O treino ativo vem de `training_plan_exercises`, ligado ao plano ativo em
 `training_plans`. `DEFAULT_EXERCISES` define o seed para bancos novos, mas o
 SQLite permanece a fonte da verdade em runtime.
 
-Planos atuais (schema 14), com foco em hipertrofia e emagrecimento, cerca de
-60 min e 3 treinos por semana alternando A/B:
+Planos atuais (schema 15), divisao de segunda a sexta com cerca de 32-37 min
+por sessao, foco em emagrecimento e definicao. O agachamento e o Zercher, sem
+barra atras da nuca:
 
 ```text
-Plano A
-1. Agachamento com barra nas costas         3x8
-2. Supino reto (barra)                      3x8
-3. Remada curvada (barra)                   3x10
-4. Desenvolvimento (barra em pé)            3x10
-5. Tríceps testa                            3x12
-6. Rosca inversa (barra)                    3x12
+Plano A (segunda, empurrar)
+1. Supino reto (barra)                      3x12
+2. Supino inclinado (barra)                 3x12
+3. Desenvolvimento (barra em pé)            3x12
+4. Elevação lateral                         4x15
+5. Tríceps testa                            3x15
 
-Plano B
-1. Levantamento Terra Romeno                3x8
-2. Supino inclinado (barra)                 3x10
-3. Remada curvada (barra)                   3x10
-4. Agachamento sumô com barra à frente      3x12
-5. Remada curvada alta no peito (barra)     3x12
-6. Rosca de punho atrás das costas (barra)  3x12
+Plano B (terca, puxar)
+1. Remada curvada (barra)                   3x12
+2. Remada curvada alta no peito (barra)     3x15
+3. Pullover (barra)                         3x15
+4. Rosca direta                             3x15
+5. Rosca inversa (barra)                    3x15
+
+Plano C (quarta, inferior)
+1. Agachamento Zercher                      3x12
+2. Levantamento Terra Romeno                3x12
+3. Agachamento sumô com barra à frente      3x12
+4. Rosca de punho atrás das costas (barra)  3x15
+
+Plano D (quinta, empurrar)
+1. Supino inclinado (barra)                 3x12
+2. Supino reto (barra)                      3x12
+3. Desenvolvimento (barra em pé)            3x12
+4. Elevação lateral                         4x15
+5. Tríceps testa                            3x15
+
+Plano E (sexta, puxar)
+1. Remada apoiada no banco (barras 40 cm)    3x12
+2. Pullover (barra)                         3x15
+3. Levantamento Terra Romeno                3x12
+4. Crucifixo invertido apoiado (barras 40 cm)  3x15
+5. Rosca direta                             3x15
 ```
 
-`DEFAULT_EXERCISES` e o plano A e `PLAN_B_EXERCISES` e o plano B. Ao concluir
-uma sessao do plano ativo `A` ou `B`, `db_ops._alternar_plano()` ativa o outro
-(`PLAN_ROTATION`). O antigo plano `A` de 11 exercicios com foco em forca virou
+Cada exercicio usa as mesmas series e repeticoes em todos os dias em que
+aparece; reps diferentes fariam a carga ser convertida por repeticoes a cada
+sessao, sem aplicar a progressao por RPE.
+
+`DEFAULT_EXERCISES` e o plano A e `WEEKLY_PLANS` guarda os planos A a E. Ao
+concluir uma sessao do plano ativo, `db_ops._alternar_plano()` ativa o seguinte
+(`PLAN_ROTATION`: A, B, C, D, E e volta para A). A rotacao segue as sessoes
+concluidas, nao o dia da semana, entao um dia perdido nao pula treino. O antigo plano `A` de 11 exercicios com foco em forca virou
 `Forca`, fica inativo e pode ser selecionado com `/plano Forca`; ele nao entra
 na rotacao. `/plano NOME` continua trocando manualmente.
 
@@ -427,8 +453,8 @@ progressao, grupos musculares e dashboard. A interface pode usar
 `(barra H)` e `(barra em pé)`.
 
 Logs historicos de exercicios substituidos ou renomeados podem permanecer no
-banco como historico. Exemplos: `Agachamento (barra)`, `Agachamento Zercher`,
-`Zercher squat`, `Rosca martelo (barra H)`, `Supino fechado (barra)` e
+banco como historico. Exemplos: `Agachamento (barra)`, `Agachamento com barra
+nas costas`, `Zercher squat`, `Rosca martelo (barra H)`, `Supino fechado (barra)` e
 `Remada alta (barra)`.
 
 ## Descanso E Montagem De Carga
@@ -437,12 +463,12 @@ banco como historico. Exemplos: `Agachamento (barra)`, `Agachamento Zercher`,
 
 ```text
 Agachamento com barra nas costas         3 min
-Agachamento Zercher                      3 min
-Supino reto (barra)                      3 min
 Supino reto back-off                     3 min
-Levantamento Terra Romeno                3 min
-Supino inclinado (barra)                 2 min
-Remada curvada (barra)                   2 min
+Agachamento Zercher                      2 min
+Supino reto (barra)                      2 min
+Levantamento Terra Romeno                2 min
+Supino inclinado (barra)                 90 s
+Remada curvada (barra)                   90 s
 Desenvolvimento (barra em pé)            90 s
 Remada curvada alta no peito (barra)     90 s
 Agachamento sumô com barra à frente      90 s
@@ -450,7 +476,10 @@ Tríceps testa                            60 s
 Rosca inversa (barra)                    60 s
 Rosca de punho atrás das costas (barra)  60 s
 Pullover (barra)                         60 s
+Elevação lateral                         60 s
 Rosca direta                             60 s
+Remada apoiada no banco (barras 40 cm)   90 s
+Crucifixo invertido apoiado (barras 40 cm) 60 s
 Rosca martelo (barra H)                  60 s
 Padrao para demais exercicios            2 min
 ```
@@ -469,7 +498,10 @@ Mapeamento atual:
 - barra reta de 2,20 m e 11 kg: agachamento com barra nas costas, supinos com
   barra, agachamento sumô com barra à frente, remada curvada, desenvolvimento,
   levantamento terra romeno e remada curvada alta no peito;
-- barra W de 6 kg: tríceps testa e pullover;
+- barra W de 6 kg: tríceps testa, pullover e rosca direta;
+- duas barras ocas de 40 cm, uma em cada mao: elevacao lateral (alvo inicial
+  4 kg por mao), remada apoiada no banco (14 kg por mao) e crucifixo
+  invertido apoiado (4 kg por mao), todos com carga registrada por mao;
 - barra reta de 2,20 m e 11 kg: rosca inversa.
 
 A observacao aparece no exercicio atual/proximo e no `/status`; nao aparece na
@@ -488,7 +520,7 @@ O banco fica em `data/limulus.db`. O schema e migrado por
 6. semeia grupos musculares padrao;
 7. semeia o plano de treino padrao quando necessario.
 
-Versao atual: `SCHEMA_VERSION = 14`.
+Versao atual: `SCHEMA_VERSION = 15`.
 
 Tabelas principais:
 
@@ -559,10 +591,11 @@ Resumo das versoes:
 12  Insere Rosca de punho atrás das costas (barra) no catalogo/plano ativo
 13  Adiciona started_at/completed_at em training_sessions e cria training_buttons
 14  Renomeia o plano A antigo para Forca e cria os planos A e B de hipertrofia
+15  Cria os planos C, D e E e refaz A a E (segunda a sexta, Zercher)
 ```
 
 Mudancas de catalogo que precisam valer para bancos novos devem atualizar
-`DEFAULT_EXERCISES` (plano A) ou `PLAN_B_EXERCISES` (plano B). Mudancas que precisam afetar bancos existentes devem virar
+`DEFAULT_EXERCISES` (plano A) ou `WEEKLY_PLANS` (planos A a E). Mudancas que precisam afetar bancos existentes devem virar
 migracao.
 
 ## Dashboard

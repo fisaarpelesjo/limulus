@@ -19,9 +19,9 @@ Usuario envia /gerar
   -> bot escreve session.json
   -> bot envia o exercicio atual com a carga de cada serie e descanso
 
-Usuario conclui o ultimo exercicio de uma sessao do plano A ou B
+Usuario conclui o ultimo exercicio de uma sessao de um plano de A a E
   -> bot envia o resumo
-  -> o outro plano (B ou A) passa a ser o ativo
+  -> o plano seguinte da sequencia (A, B, C, D, E e volta para A) passa a ser o ativo
 
 Usuario envia /prever
   -> bot monta o treino em texto com alvo e descanso
@@ -100,25 +100,44 @@ pendentes. Uma sessao completa nao e recuperada como ativa.
 
 ## Catalogo Atual
 
-Dois planos de hipertrofia e emagrecimento, cerca de 60 min, 3 treinos por
-semana alternando A/B automaticamente:
+Cinco planos, de segunda a sexta, com cerca de 32-37 min cada e foco em
+emagrecimento e definicao. Eles alternam automaticamente em sequencia ao
+concluir cada sessao. O agachamento e o Zercher, sem barra atras da nuca:
 
 ```text
-Plano A
-Agachamento com barra nas costas - 3x8
-Supino reto (barra) - 3x8
-Remada curvada (barra) - 3x10
-Desenvolvimento (barra em pé) - 3x10
-Tríceps testa - 3x12
-Rosca inversa (barra) - 3x12
+Plano A (segunda, empurrar)
+1. Supino reto (barra)                      3x12
+2. Supino inclinado (barra)                 3x12
+3. Desenvolvimento (barra em pé)            3x12
+4. Elevação lateral                         4x15
+5. Tríceps testa                            3x15
 
-Plano B
-Levantamento Terra Romeno - 3x8
-Supino inclinado (barra) - 3x10
-Remada curvada (barra) - 3x10
-Agachamento sumô com barra à frente - 3x12
-Remada curvada alta no peito (barra) - 3x12
-Rosca de punho atrás das costas (barra) - 3x12
+Plano B (terca, puxar)
+1. Remada curvada (barra)                   3x12
+2. Remada curvada alta no peito (barra)     3x15
+3. Pullover (barra)                         3x15
+4. Rosca direta                             3x15
+5. Rosca inversa (barra)                    3x15
+
+Plano C (quarta, inferior)
+1. Agachamento Zercher                      3x12
+2. Levantamento Terra Romeno                3x12
+3. Agachamento sumô com barra à frente      3x12
+4. Rosca de punho atrás das costas (barra)  3x15
+
+Plano D (quinta, empurrar)
+1. Supino inclinado (barra)                 3x12
+2. Supino reto (barra)                      3x12
+3. Desenvolvimento (barra em pé)            3x12
+4. Elevação lateral                         4x15
+5. Tríceps testa                            3x15
+
+Plano E (sexta, puxar)
+1. Remada apoiada no banco (barras 40 cm)    3x12
+2. Pullover (barra)                         3x15
+3. Levantamento Terra Romeno                3x12
+4. Crucifixo invertido apoiado (barras 40 cm)  3x15
+5. Rosca direta                             3x15
 ```
 
 Cada exercicio usa piramide crescente (80% -> 90% -> 100% do alvo); o RPE vale

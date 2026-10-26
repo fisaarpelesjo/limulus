@@ -11,8 +11,10 @@ SESSION_FILE = Path(__file__).resolve().parents[1] / "session.json"
 
 TRAINING_EXERCISES = range(0, 11)
 TREINO_EXERCISES = TRAINING_EXERCISES
+# Progressao cautelosa para series de 12-15 repeticoes: no maximo um passo de
+# anilha (2 kg) por sessao, mesmo com RPE 7 ou menor.
 RPE_PROGRESSION_KG = {
-    7: 4.0,
+    7: 2.0,
     8: 2.0,
     9: 0.0,
     10: -2.0,
@@ -23,6 +25,9 @@ INITIAL_TARGET_WEIGHTS = {
     "Rosca inversa (barra)": 11.0,
     "Rosca de punho atrás das costas (barra)": 11.0,
     "Supino inclinado (barra)": 41.0,
+    "Elevação lateral": 4.0,
+    "Remada apoiada no banco (barras 40 cm)": 14.0,
+    "Crucifixo invertido apoiado (barras 40 cm)": 4.0,
 }
 
 TRAINING_B_RULES = (
@@ -89,24 +94,29 @@ DISPLAY_NAMES = {
     "Rosca martelo (barra H)": "Rosca martelo",
     "Rosca inversa (barra)": "Rosca inversa",
     "Rosca de punho atrás das costas (barra)": "Rosca de punho atrás das costas",
+    "Remada apoiada no banco (barras 40 cm)": "Remada apoiada no banco",
+    "Crucifixo invertido apoiado (barras 40 cm)": "Crucifixo invertido apoiado",
     "Tríceps testa": "Tríceps testa",
     "Triceps testa": "Tríceps testa",
 }
 
 REST_INTERVALS = {
     "Agachamento com barra nas costas": "3 min",
-    "Agachamento Zercher": "3 min",
+    "Agachamento Zercher": "2 min",
     "Agachamento sumô com barra à frente": "90 s",
-    "Supino reto (barra)": "3 min",
+    "Supino reto (barra)": "2 min",
     "Supino reto back-off": "3 min",
-    "Supino inclinado (barra)": "2 min",
-    "Remada curvada (barra)": "2 min",
+    "Supino inclinado (barra)": "90 s",
+    "Remada curvada (barra)": "90 s",
     "Desenvolvimento (barra em pé)": "90 s",
     "Desenvolvimento (barra em pe)": "90 s",
-    "Levantamento Terra Romeno": "3 min",
+    "Levantamento Terra Romeno": "2 min",
     "Pullover (barra)": "60 s",
     "Remada curvada alta no peito (barra)": "90 s",
     "Rosca direta": "60 s",
+    "Elevação lateral": "60 s",
+    "Remada apoiada no banco (barras 40 cm)": "90 s",
+    "Crucifixo invertido apoiado (barras 40 cm)": "60 s",
     "Rosca martelo (barra H)": "60 s",
     "Rosca inversa (barra)": "60 s",
     "Rosca de punho atrás das costas (barra)": "60 s",
@@ -123,6 +133,10 @@ PLATE_STEP_KG = 2.0
 # com a ultima carga menos RETURN_REDUCTION_KG, sem somar a progressao por RPE.
 RETURN_AFTER_DAYS = 10
 RETURN_REDUCTION_KG = 4.0
+# Pausa longa: parado ha RETURN_LONG_AFTER_DAYS dias ou mais, a carga volta a
+# RETURN_LONG_FACTOR da ultima (ja convertida por reps), arredondada para baixo.
+RETURN_LONG_AFTER_DAYS = 21
+RETURN_LONG_FACTOR = 0.80
 
 LOAD_EQUIPMENT = {
     "Agachamento com barra nas costas": {
@@ -166,6 +180,19 @@ LOAD_EQUIPMENT = {
     },
     "Tríceps testa": {"name": "barra W", "weight": 6.0},
     "Triceps testa": {"name": "barra W", "weight": 6.0},
+    "Rosca direta": {"name": "barra W", "weight": 6.0},
+    # Uma barra oca de 40 cm em cada mao; a carga registrada e por mao.
+    "Elevação lateral": {"name": "barra de 40 cm", "weight": 0.0, "per_hand": True},
+    "Remada apoiada no banco (barras 40 cm)": {
+        "name": "barra de 40 cm",
+        "weight": 0.0,
+        "per_hand": True,
+    },
+    "Crucifixo invertido apoiado (barras 40 cm)": {
+        "name": "barra de 40 cm",
+        "weight": 0.0,
+        "per_hand": True,
+    },
 }
 
 def read_exercises():
@@ -208,6 +235,8 @@ def suggest_next_weight(previous_weight, previous_rpe=None, previous_reps=None,
         )
         equipment = LOAD_EQUIPMENT.get(exercise_name)
         floor = equipment["weight"] if equipment else 0.0
+        if days_since >= RETURN_LONG_AFTER_DAYS:
+            return round_down_to_plates(base * RETURN_LONG_FACTOR, exercise_name)
         return max(base - RETURN_REDUCTION_KG, floor)
     if reps_changed:
         return convert_weight_for_reps(
@@ -281,6 +310,11 @@ def format_loading_note(exercise_name, target_weight):
 
     bar_weight = equipment["weight"]
     plates_weight = max(float(target_weight) - bar_weight, 0.0)
+    if equipment.get("per_hand"):
+        return (
+            f"{equipment['name']} em cada mao"
+            f" + {format_weight(plates_weight)}kg de anilhas por mao"
+        )
     return (
         f"{equipment['name']} {format_weight(bar_weight)}kg"
         f" + {format_weight(plates_weight)}kg de anilhas"

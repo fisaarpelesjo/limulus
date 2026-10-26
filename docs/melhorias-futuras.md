@@ -7,8 +7,9 @@ implementadas no Limulus.
 
 Entregue: fluxo de treino por botoes, carga exibida vinculada ao clique,
 protecao contra duplicidade, inicio/fim persistidos e resumo com duracao.
-Tambem entregues: planos A/B de hipertrofia com rotacao automatica, piramide
-crescente por serie e conversao de carga por repeticoes (schema 14).
+Tambem entregues: piramide crescente por serie e conversao de carga por
+repeticoes (schema 14) e divisao de segunda a sexta em cinco planos A a E com
+rotacao automatica (schema 15).
 
 Pendente priorizado: volume real da piramide no dashboard (ver abaixo).
 
@@ -510,6 +511,40 @@ Antes de adicionar um item:
 5. planejar testes isolados
 
 ## Historico De Entregas
+
+### 2026-10-26
+
+- schema 15: planos `A` a `E` de segunda a sexta, cerca de 40 min cada, foco
+  em emagrecimento e definicao (empurrar, puxar, inferior, empurrar, puxar)
+- `Agachamento Zercher` volta a ser o agachamento ativo; `Agachamento com barra
+  nas costas` fica so no plano `Forca`, sem barra atras da nuca
+- rotacao automatica A, B, C, D, E e volta para A ao concluir a sessao
+- cada exercicio usa as mesmas series e reps em todos os dias, para a
+  progressao por RPE nao virar conversao por repeticoes
+- descansos menores para caber em 40 min: Zercher, supino reto e Terra Romeno
+  2 min; supino inclinado e remada curvada 90 s
+- carga mais leve e mais repeticoes para o retorno apos um mes parado por
+  crise de enxaqueca: compostos 3x12 e acessorios 3x15
+- progressao por RPE cautelosa: RPE 7 ou menor passa de +4 kg para +2 kg
+- pausa de 21 dias ou mais volta com 80% da ultima carga (ja convertida por
+  reps), arredondada para baixo em anilhas; de 10 a 20 dias segue -4 kg
+- `Elevação lateral` 4x15 (60 s) no fim dos dias de empurrar `A` e `D`, para
+  dar largura de ombro; feita com duas barras ocas de 40 cm, uma em cada mao,
+  com carga registrada por mao (`per_hand` em `LOAD_EQUIPMENT`) e alvo inicial
+  de 4 kg por mao
+- foco em costas, peito e ombro, com braco direto como quinto exercicio:
+  `Tríceps testa` 3x15 fecha `A` e `D` e `Rosca direta` 3x15 entra em `B` e
+  `E` (60 s, barra W de 6 kg). Antes o biceps (~6-8 series
+  equivalentes) e o triceps (~9) so recebiam trabalho indireto das remadas e
+  dos supinos; agora cada um ganha 6 series diretas por semana. `A`, `B`,
+  `D` e `E` tem 5 exercicios (cerca de 35-37 min) e `C` tem 4 (cerca de
+  32 min); `Rosca inversa (barra)` fica so em `B`
+- lombar menos carregada na sexta: `Remada curvada (barra)` e `Remada
+  curvada alta no peito (barra)` saem de `E` e entram `Remada apoiada no banco (barras 40 cm)`
+  3x12 (90 s, 14 kg por mao) e `Crucifixo invertido apoiado (barras 40 cm)` 3x15
+  (60 s, 4 kg por mao), feitos deitado de brucos no banco inclinado com uma
+  barra de 40 cm em cada mao (`per_hand`). As remadas curvadas ficam so na
+  terca
 
 ### 2026-09-29
 

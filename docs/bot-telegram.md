@@ -18,13 +18,13 @@ valores em negrito; o footer usa italico para barra, total com barra por serie
 e `RPE da última série`. Exemplo com alvo de 82 kg na barra de 11 kg:
 
 ```text
-AGACHAMENTO COM BARRA NAS COSTAS
+SUPINO RETO
 
 1ª série: 54 kg anilhas
 2ª série: 62 kg anilhas
 3ª série: 71 kg anilhas
 Repetições: 8
-Descanso: 3 min
+Descanso: 2 min
 
 Barra: barra reta 2,20 m · 11 kg
 Total com barra: 65 · 73 · 82 kg
@@ -186,11 +186,11 @@ handle_generate()
   -> send_current_exercise(primeiro exercicio com botoes RPE)
 ```
 
-O `/gerar` usa o plano ativo. Os planos `A` e `B` (6 exercicios cada, foco em
-hipertrofia e emagrecimento) alternam sozinhos: ao registrar o ultimo exercicio
-de uma sessao do plano ativo `A` ou `B`, o outro passa a ser o ativo. O plano
-`A` comeca por `Agachamento com barra nas costas` (`3x8`) e o `B` por
-`Levantamento Terra Romeno` (`3x8`). O plano `Forca` (antigo `A`) nao alterna.
+O `/gerar` usa o plano ativo. Os planos `A` a `E` (segunda a sexta, cerca de
+32-37 min, foco em emagrecimento e definicao) alternam sozinhos: ao registrar o
+ultimo exercicio de uma sessao do plano ativo, o proximo da sequencia A, B, C,
+D, E passa a ser o ativo, e depois do `E` volta o `A`. O plano `A` comeca por
+`Supino reto (barra)` (`3x12`). O plano `Forca` (antigo `A`) nao alterna.
 
 O texto enviado mostra apenas o exercicio atual com a carga de cada serie,
 repeticoes e descanso. A lista completa continua disponivel em `/prever`.
@@ -198,7 +198,7 @@ Quando existe carga anterior para o exercicio, o alvo da serie de topo e
 calculado pela ultima carga registrada e pelo RPE:
 
 ```text
-RPE 7 ou menor  -> +4 kg
+RPE 7 ou menor  -> +2 kg
 RPE 8           -> +2 kg
 RPE 9           -> manter
 RPE 10 ou maior -> -2 kg
@@ -220,17 +220,26 @@ Exemplo: se o treino anterior registrou `40 8`, o proximo `/gerar` mostra
 Se as reps do ultimo log diferem das reps do plano atual, o alvo e convertido
 pelo 1RM estimado (Epley: `1RM = peso x (1 + reps/30)`) e arredondado para
 baixo em anilhas, sem aplicar o delta de RPE nessa sessao. Exemplo: 61 kg x5
-vira 55 kg para 3x8.
+vira 49 kg para 3x12.
 
 Retorno apos pausa: se o exercicio esta parado ha 10 dias ou mais
 (`RETURN_AFTER_DAYS`), o alvo volta com a ultima carga menos 4 kg
 (`RETURN_REDUCTION_KG`), sem somar a progressao por RPE e sem ficar abaixo da
-barra. Se as reps mudaram, a conversao vem antes. Na sessao seguinte a
-progressao por RPE volta ao normal.
+barra. Com 21 dias ou mais (`RETURN_LONG_AFTER_DAYS`), o alvo vira 80%
+(`RETURN_LONG_FACTOR`) da ultima carga, arredondado para baixo em anilhas.
+Exemplo: 61 kg x5 parado ha 35 dias vira 39 kg para 3x12. Se as reps mudaram,
+a conversao vem antes. Na sessao seguinte a progressao por RPE volta ao normal.
 
 As series seguem uma piramide crescente de 80% -> 90% -> 100% do alvo
 (`ods_ops.get_set_weights`), com as intermediarias arredondadas para baixo em
 anilhas de 2 kg. A carga gravada no log e a da serie de topo.
+
+A `Elevação lateral` usa duas barras ocas de 40 cm, uma em cada mao. A carga e
+por mao, com alvo inicial de 4 kg, e a mensagem mostra `anilhas por mão` em cada
+serie, `Barra: 40 cm · 0 kg (uma em cada mão)` e `Total por mão`. A remada
+apoiada no banco (alvo inicial 14 kg por mao) e o crucifixo invertido apoiado
+(4 kg por mao), da sexta, usam o mesmo formato e aparecem sem o sufixo
+`(barras 40 cm)`.
 
 `Rosca inversa (barra)` tem alvo inicial de 11 kg e `Supino inclinado (barra)`
 tem alvo inicial de 41 kg quando ainda nao houver historico proprio. Depois do
@@ -250,7 +259,7 @@ aparece como:
 barra reta 2,20 m 11kg + 29kg de anilhas
 ```
 
-Para `Tríceps testa` e `Pullover (barra)`, a barra W pesa 6 kg, entao um alvo
+Para `Tríceps testa`, `Pullover (barra)` e `Rosca direta`, a barra W pesa 6 kg, entao um alvo
 de 18 kg aparece como:
 
 ```text
@@ -321,10 +330,10 @@ flexao e sombra de boxe ou corda sem corda usam peso corporal.
 Intervalos atuais:
 
 ```text
-Agachamento com barra nas costas, Supino reto, Supino reto back-off, Levantamento Terra Romeno: 3 min
-Supino inclinado (barra), Remada curvada (barra): 2 min
-Desenvolvimento, Remada curvada alta no peito, Agachamento sumô: 90 s
-Tríceps testa, Rosca inversa, Rosca de punho, Pullover, Rosca direta, Rosca martelo: 60 s
+Agachamento com barra nas costas, Supino reto back-off: 3 min
+Agachamento Zercher, Supino reto, Levantamento Terra Romeno: 2 min
+Supino inclinado (barra), Remada curvada (barra), Desenvolvimento, Remada curvada alta no peito, Remada apoiada no banco, Agachamento sumô: 90 s
+Tríceps testa, Rosca inversa, Rosca de punho, Pullover, Elevação lateral, Rosca direta, Rosca martelo, Crucifixo invertido apoiado: 60 s
 Demais exercicios: 2 min
 ```
 
@@ -369,8 +378,9 @@ O plano selecionado passa a ser usado por:
 A troca nao altera sessoes antigas nem uma sessao ja gerada. Novos planos sao
 cadastrados por `db_ops.replace_training_plan()`.
 
-Planos atuais: `A`, `B` e `Forca`. A e B alternam automaticamente ao concluir
-uma sessao do plano ativo (`db_ops.PLAN_ROTATION`); `Forca` e o antigo plano de
+Planos atuais: `A` a `E` (segunda a sexta, cerca de 32-37 min) e `Forca`. A a E
+alternam em sequencia ao concluir uma sessao do plano ativo
+(`db_ops.PLAN_ROTATION`: A, B, C, D, E e volta para A); `Forca` e o antigo plano de
 11 exercicios, inativo, selecionavel com `/plano Forca`, e nao entra na
 rotacao.
 

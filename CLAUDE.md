@@ -29,8 +29,9 @@ modulo padrao `sqlite3` ou helpers de `limulus/db_ops.py`. Nao depender
 do binario externo `sqlite3`, pois ele pode nao estar disponivel no PATH local.
 No schema atual, `training_sessions` usa `id`, `date` e `training_type`; nao
 assumir coluna `plan_name`. Desde o schema 13, `started_at` e `completed_at`
-existem e podem ser nulos em sessoes historicas. Desde o schema 14,
-os planos sao `A` e `B` (rotacao automatica) e `Forca` (antigo `A`, inativo).
+existem e podem ser nulos em sessoes historicas. Desde o schema 15,
+os planos sao `A` a `E` (segunda a sexta, rotacao automatica) e `Forca`
+(antigo `A` do schema 13, inativo).
 `training_logs.weight` guarda a carga da serie de topo. `training_logs`
 usa `exercise_name` para o nome do exercicio, nao `exercise`, e nao possui
 `logged_at`; usar `session_id`, `sort_order` e `id` para ordenar logs.
@@ -208,7 +209,9 @@ Catalogo atual:
 
 - A sequencia ativa vem de `training_plan_exercises`; `TRAINING_EXERCISES` e
   `TREINO_EXERCISES` permanecem apenas como aliases legados.
-- Progressao por RPE: RPE 7 ou menor `+4 kg`, RPE 8 `+2 kg`, RPE 9 mantem, RPE 10 ou maior `-2 kg`, sem RPE mantem.
+- Progressao por RPE (cautelosa, para series de 12-15 reps): RPE 7 ou menor
+  `+2 kg`, RPE 8 `+2 kg`, RPE 9 mantem, RPE 10 ou maior `-2 kg`, sem RPE
+  mantem. Nunca sobe mais de um passo de anilha (2 kg) por sessao.
 - Piramide crescente: `get_set_weights(nome, alvo, series)` gera 80% -> 90% ->
   100% do alvo; series intermediarias sao arredondadas para baixo em anilhas de
   2 kg acima da barra (`round_down_to_plates`). A ultima serie e a de topo: o
@@ -217,13 +220,18 @@ Catalogo atual:
 - Conversao por repeticoes: se as reps do ultimo log do exercicio diferem das
   reps do plano, `suggest_next_weight` converte a carga pelo 1RM estimado
   (Epley, `peso x (1 + reps/30)`) e arredonda para baixo em anilhas, ignorando
-  o delta de RPE nessa sessao. Exemplo: 61 kg x5 vira 55 kg para 3x8.
+  o delta de RPE nessa sessao. Exemplo: 61 kg x5 vira 49 kg para 3x12.
 - Retorno apos pausa: se o ultimo log do exercicio tem `RETURN_AFTER_DAYS`
   (10) dias ou mais, o alvo volta com a ultima carga menos
   `RETURN_REDUCTION_KG` (4 kg), sem somar a progressao por RPE e sem ficar
   abaixo da barra; a conversao por reps, se houver, vem antes. A pausa conta a
   partir de `training_sessions.date` do ultimo log ate a data da sessao nova
   (ou da sessao recuperada), via `ods_ops.days_between()`.
+- Pausa longa: com `RETURN_LONG_AFTER_DAYS` (21) dias ou mais, o alvo vira
+  `RETURN_LONG_FACTOR` (80%) da ultima carga, ja convertida por reps, e e
+  arredondado para baixo em anilhas, em vez de tirar 4 kg. Exemplo: 61 kg x5
+  parado ha 35 dias vira 39 kg para 3x12. Motivo: retorno cauteloso apos um
+  mes parado por crise de enxaqueca, preferindo carga leve e mais reps.
 - RPE 9 nao representa estagnacao automaticamente. Manter a carga nesse nivel
   faz parte do metodo para consolidar tecnica, amplitude, controle e qualidade
   das repeticoes. Quando a mesma carga passar a RPE 8 ou menor, o sistema
@@ -237,12 +245,13 @@ Catalogo atual:
   depois disso usam a progressao por RPE.
 - `target_weight` fica em `session.json`.
 - `rest_interval` fica em `session.json` e aparece em `/gerar`, `/status` e proximo exercicio.
-- Descansos (`REST_INTERVALS`): agachamento com barra nas costas, supino reto,
-  supino reto back-off e Terra Romeno 3 min; supino inclinado e remada curvada
-  2 min; desenvolvimento, remada curvada alta no peito e agachamento sumô 90 s;
-  triceps testa, rosca inversa, rosca de punho, pullover, rosca direta e rosca
-  martelo 60 s; demais 2 min.
-- `Rosca de punho atrás das costas (barra)` usa 3x12 e alvo inicial de 11 kg.
+- Descansos (`REST_INTERVALS`): agachamento com barra nas costas e supino reto
+  back-off 3 min; Agachamento Zercher, supino reto e Terra Romeno 2 min; supino
+  inclinado, remada curvada, desenvolvimento, remada curvada alta no peito e
+  agachamento sumô 90 s; triceps testa, rosca inversa, rosca de punho, pullover,
+  elevacao lateral, rosca direta e rosca martelo 60 s; remada apoiada no
+  banco 90 s e crucifixo invertido apoiado 60 s; demais 2 min.
+- `Rosca de punho atrás das costas (barra)` usa 3x15 e alvo inicial de 11 kg.
 - `loading_note` fica em `session.json` quando houver equipamento fixo e aparece apenas no exercicio atual/proximo, nao na lista `/exercicios`.
 - Nomes visiveis no bot e dashboard podem usar `ods_ops.get_display_name()` para
   ocultar qualificadores como `(barra)`, `(barra H)` e `(barra em pé)`. Nao
@@ -253,26 +262,58 @@ Catalogo atual:
   `Levantamento Terra Romeno` e `Remada curvada alta no peito (barra)` usam
   barra reta de 2,20 m e 11 kg; a observacao mostra a carga total como
   `barra reta 2,20 m 11kg + Xkg de anilhas`.
-- `Tríceps testa` e `Pullover (barra)` usam barra W de 6 kg; a observacao mostra a carga total como `barra W 6kg + Xkg de anilhas`.
+- `Tríceps testa`, `Pullover (barra)` e `Rosca direta` usam barra W de 6 kg; a observacao mostra a carga total como `barra W 6kg + Xkg de anilhas`.
+- `LOAD_EQUIPMENT` aceita o campo opcional `per_hand`. Com ele, `format_loading_note()` devolve `barra de 40 cm em cada mao + Xkg de
+  anilhas por mao` e `_format_current_exercise()` mostra `anilhas por mão`
+  em cada serie, `Barra: 40 cm · 0 kg (uma em cada mão)` e `Total por mão`
+  no lugar de `Total com barra`. Usam `per_hand`: `Elevação lateral`,
+  `Remada apoiada no banco (barras 40 cm)` e `Crucifixo invertido apoiado (barras 40 cm)`.
 - `Rosca inversa (barra)` usa barra reta de 2,20 m e 11 kg; a observacao mostra a carga total como `barra reta 2,20 m 11kg + Xkg de anilhas`.
-- Planos (schema 14), 3 treinos por semana alternando A/B, cerca de 60 min,
-  foco em hipertrofia e emagrecimento:
-  - `A`: `Agachamento com barra nas costas` 3x8, `Supino reto (barra)` 3x8,
-    `Remada curvada (barra)` 3x10, `Desenvolvimento (barra em pé)` 3x10,
-    `Tríceps testa` 3x12, `Rosca inversa (barra)` 3x12.
-  - `B`: `Levantamento Terra Romeno` 3x8, `Supino inclinado (barra)` 3x10,
-    `Remada curvada (barra)` 3x10, `Agachamento sumô com barra à frente` 3x12,
-    `Remada curvada alta no peito (barra)` 3x12, `Rosca de punho atrás das
-    costas (barra)` 3x12.
+- Planos (schema 15), divisao de segunda a sexta, cerca de 32-37 min por sessao,
+  foco em emagrecimento e definicao. O agachamento e o Zercher (barra na dobra
+  dos cotovelos), sem barra atras da nuca:
+  - `A` (segunda, empurrar): `Supino reto (barra)` 3x12, `Supino inclinado
+    (barra)` 3x12, `Desenvolvimento (barra em pé)` 3x12, `Elevação lateral` 4x15,
+    `Tríceps testa` 3x15.
+  - `B` (terca, puxar): `Remada curvada (barra)` 3x12, `Remada curvada alta no
+    peito (barra)` 3x15, `Pullover (barra)` 3x15, `Rosca direta` 3x15,
+    `Rosca inversa (barra)` 3x15.
+  - `C` (quarta, inferior): `Agachamento Zercher` 3x12, `Levantamento Terra
+    Romeno` 3x12, `Agachamento sumô com barra à frente` 3x12, `Rosca de punho
+    atrás das costas (barra)` 3x15.
+  - `D` (quinta, empurrar): `Supino inclinado (barra)` 3x12, `Supino reto
+    (barra)` 3x12, `Desenvolvimento (barra em pé)` 3x12, `Elevação lateral` 4x15,
+    `Tríceps testa` 3x15.
+  - `E` (sexta, puxar): `Remada apoiada no banco (barras 40 cm)` 3x12, `Pullover (barra)`
+    3x15, `Levantamento Terra Romeno` 3x12, `Crucifixo invertido apoiado (barras 40 cm)`
+    3x15, `Rosca direta` 3x15. As duas remadas curvadas sairam da sexta para
+    tirar carga da lombar: a remada e o crucifixo sao feitos deitado de
+    brucos no banco inclinado, com uma barra de 40 cm em cada mao.
+  - `Elevação lateral` usa duas barras ocas de 40 cm, uma em cada mao, com
+    peso desprezivel (`weight` 0). A carga registrada e por mao e o alvo
+    inicial e 4 kg por mao. Com anilha minima de 1 kg, o passo de 2 kg por mao
+    equivale a 1 kg em cada ponta. `Rosca direta` usa barra W de 6 kg.
+  - `Remada apoiada no banco (barras 40 cm)` (alvo inicial 14 kg por mao, 90 s) e
+    `Crucifixo invertido apoiado (barras 40 cm)` (alvo inicial 4 kg por mao, 60 s) usam
+    o mesmo equipamento `per_hand` da elevacao lateral. `get_display_name()`
+    exibe os dois sem o sufixo `(barras 40 cm)`, e os grupos musculares
+    ficam em `DEFAULT_MUSCLE_GROUPS` (dorsais; deltoide posterior).
   - `Forca`: antigo plano `A` de 11 exercicios com foco em forca, inativo e
     disponivel via `/plano Forca`.
-- `DEFAULT_EXERCISES` em `db_ops` e o plano A e `PLAN_B_EXERCISES` e o plano B.
-- Ao concluir uma sessao cujo `training_type` e o plano ativo `A` ou `B`,
-  `db_ops._alternar_plano` ativa o outro (`PLAN_ROTATION`). Outros planos, como
-  `Forca`, nao alternam; `/plano NOME` continua trocando manualmente.
+- Cada exercicio usa as mesmas series e repeticoes em todos os dias em que
+  aparece. Reps diferentes entre dias fariam `suggest_next_weight` converter a
+  carga por repeticoes a cada sessao e nunca aplicar a progressao por RPE.
+- `DEFAULT_EXERCISES` em `db_ops` e o plano A e `WEEKLY_PLANS` guarda os planos
+  A a E.
+- Ao concluir uma sessao cujo `training_type` e o plano ativo, de `A` a `E`,
+  `db_ops._alternar_plano` ativa o seguinte (`PLAN_ROTATION`: A, B, C, D, E e
+  volta para A). A rotacao segue a ordem das sessoes concluidas, nao o dia da
+  semana; um dia perdido nao pula treino. Outros planos, como `Forca`, nao
+  alternam; `/plano NOME` continua trocando manualmente.
 - `Supino fechado (barra)` e `Remada alta (barra)` estao inativos para sessoes futuras.
-- O agachamento com barra nas costas usa a barra apoiada no trapezio/ombro.
-- Logs historicos podem permanecer com nomes antigos ou inativos, incluindo `Agachamento (barra)`, `Agachamento Zercher`, `Zercher squat`, `Supino fechado (barra)`, `Remada alta (barra)` e `Rosca martelo (barra H)`.
+- `Agachamento com barra nas costas` saiu dos planos A a E no schema 15 (o usuario nao quer barra atras da nuca); continua no plano `Forca` e no historico.
+- Logs antigos de `Agachamento Zercher` voltam a alimentar a progressao desse exercicio (com retorno apos pausa e conversao por reps quando couber).
+- Logs historicos podem permanecer com nomes antigos ou inativos, incluindo `Agachamento (barra)`, `Agachamento com barra nas costas`, `Zercher squat`, `Supino fechado (barra)`, `Remada alta (barra)` e `Rosca martelo (barra H)`.
 
 ### `limulus/db_ops.py`
 
@@ -372,7 +413,7 @@ Dashboard local de volume:
 ## Dados E Estado
 
 - Banco versionado: `data/limulus.db`.
-- Versao atual do esquema: `SCHEMA_VERSION = 14`.
+- Versao atual do esquema: `SCHEMA_VERSION = 15`.
 - `training_sessions.started_at` e `completed_at` guardam horarios ISO com
   UTC-03:00; historicos migrados ficam nulos. `training_buttons` vincula token
   ao log e carga exibida. Cliques sao atomicos e invalidam botoes do log.
@@ -390,8 +431,9 @@ Dashboard local de volume:
 SQLite e a fonte da verdade dos exercicios. Nao mover a gestao de exercicios de volta para ODS.
 `exercise_muscle_groups` e a fonte da classificacao muscular usada pelo bot e
 pelo dashboard.
-`training_plans` e `training_plan_exercises` armazenam os planos A, B e Forca;
-apenas um plano nao vazio fica ativo por vez, e A/B alternam ao concluir a sessao.
+`training_plans` e `training_plan_exercises` armazenam os planos A a E e Forca;
+apenas um plano nao vazio fica ativo por vez, e A a E alternam em sequencia ao
+concluir a sessao.
 Mudancas de catalogo devem sincronizar `data/limulus.db` e `limulus/db_ops.py`
 quando tambem precisarem valer para bancos novos.
 
