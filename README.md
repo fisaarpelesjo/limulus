@@ -259,35 +259,55 @@ mensagens cosmeticas.
 7. Adiciona `rest_interval` por exercicio.
 8. Adiciona `loading_note` quando o exercicio usa barra/equipamento fixo.
 9. Escreve `session.json` com `date`, `session_id` e exercicios.
-10. Envia data/hora de inicio em Brasilia e o primeiro exercicio, sem lista.
+10. Envia "⚔ BATALHA INICIADA!" com plano, dia, data/hora de Brasilia e numero
+    de quests, a imagem de encontro com os inimigos e a primeira quest, sem
+    lista.
 
 O botao "⚔ Iniciar treino" inicia o mesmo fluxo e desaparece enquanto ha treino
 ativo. Se ja existe sessao em andamento, o bot retoma o exercicio pendente.
-Toque em RPE ≤7, 8, 9 ou ≥10 para registrar a carga total indicada e avancar.
-Os extremos sao armazenados como 7 e 10; nao ha botao sem RPE. A confirmacao
-(`✓ 57 kg · RPE 8 · +10 EXP`) substitui os botoes do exercicio concluido. No
+Toque em um dos botoes de golpe ("🛡 Leve · RPE ≤7", "⚔ Certeiro · RPE 8",
+"🔥 Crítico · RPE 9" ou "💀 No limite · RPE 10") para registrar a carga total
+indicada e avancar; os valores gravados sao 7, 8, 9 e 10 e nao ha botao sem
+RPE. A confirmacao ("💥 Golpe certeiro! 57 kg · RPE 8" e "✅ Quest completa:
+<inimigo> derrotado! +10 EXP") substitui os botoes da quest concluida. No
 fim, o resumo (`🏁 TREINO CONCLUÍDO`) inclui horarios, duracao, volume e
 comparacoes, e o teclado "⚔ Iniciar treino" / "🍖 Ver dieta" reaparece.
 Comando invalido sem sessao ativa tambem devolve esse teclado, o que troca um
 teclado antigo que tenha ficado no celular.
 Use `/ajuda` sem sessao ativa para exibir esse teclado ou `/status` para
-recuperar os botoes do exercicio atual. Sem carga alvo, informe a primeira
+recuperar os botoes da quest atual. Sem carga alvo, informe a primeira
 carga manualmente; entradas numericas continuam disponiveis.
 
-As mensagens usam um tom JRPG leve: a sessao comeca com "⚔ Nova batalha!", o
-`/status` mostra "⚔ Batalha em andamento — X/Y" e o `/desfazer` responde
-"↩ Turno desfeito: NOME".
+O treino segue o formato de quest: cada exercicio e uma batalha contra um
+inimigo escolhido pelo grupo muscular principal (por exemplo, Golem de Ferro
+para peitoral, Diabrete Rúnico para triceps, Morcego de Ferro para biceps e
+antebraco; Cogumelo Bravo quando nao ha grupo mapeado). A retomada mostra
+"⚔ Batalha em andamento — quest i/n", o `/status` mostra "⚔ Batalha em
+andamento — i/n quests completas" e o `/desfazer` responde "↩ Turno desfeito:
+NOME".
 
-O exercicio atual separa nome, instrucoes e equipamento com linhas em branco.
-O nome aparece em caixa alta com o prefixo `⚔`.
-O body mostra uma linha por serie da piramide crescente (`1ª série: 50 kg
-anilhas`, ou `carga` sem equipamento fixo), depois repeticoes e descanso, com
-valores em destaque. O footer em italico mostra a barra, o total por serie
-(`Total com barra: 65 · 73 · 82 kg`) e `RPE da última série`. Sem alvo, aparece
-`Séries: N` e o pedido da primeira carga. A carga enviada ao bot e a carga total
-da serie de topo; o RPE se refere a essa ultima serie.
+Cada quest chega como imagem da batalha com o card na legenda (se a imagem
+falhar, o card vem como texto):
 
-`/prever` usa a mesma montagem de treino, mas nao cria `training_sessions`, nao
+```text
+⚔ QUEST 1/5 · SUPINO RETO
+👹 Derrote o Golem de Ferro!
+
+📜 Objetivo: 3 golpes de 12 repetições
+⚔ Golpe 1 · 54 kg de anilhas (total 65 kg)
+⚔ Golpe 2 · 62 kg de anilhas (total 73 kg)
+🎯 Golpe final · 71 kg de anilhas (total 82 kg)
+
+⏳ Descanso entre golpes: 2 min
+🏋 Barra 2,20 m · 11 kg
+🎯 Depois do golpe final, como foi?
+```
+
+Sem equipamento fixo, cada golpe mostra so a carga; sem alvo, o card pede a
+primeira carga. A carga enviada ao bot e a carga total da serie de topo (o
+golpe final); o RPE se refere a ela.
+
+`/prever` usa a mesma montagem de treino, em lista de texto, mas nao cria `training_sessions`, nao
 cria `training_logs` e nao escreve `session.json`.
 
 `/treinob` nao cria sessao, logs nem `session.json`. Ele mostra um treino de
@@ -305,9 +325,10 @@ Registro numerico:
 
 1. O bot carrega `session.json`.
 2. Valida o cache contra o SQLite.
-3. Encontra o proximo exercicio sem carga.
+3. Encontra a proxima quest (exercicio sem carga).
 4. Atualiza `training_logs.weight` e `training_logs.rpe`.
-5. Envia o proximo exercicio com alvo, descanso e montagem de carga quando houver.
+5. Envia a proxima quest (imagem de batalha com o card na legenda) com as cargas
+   de cada golpe, descanso e barra quando houver.
 6. No ultimo exercicio, envia resumo pos-treino. Se a sessao era do plano ativo
    `A` ou `B`, o outro plano passa a ser o ativo.
 

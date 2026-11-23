@@ -17,7 +17,9 @@ Usuario envia /gerar
   -> bot cria uma sessao no SQLite
   -> bot cria um log por exercicio ativo
   -> bot escreve session.json
-  -> bot envia o exercicio atual com a carga de cada serie e descanso
+  -> bot envia "⚔ BATALHA INICIADA!" e a imagem de encontro com os inimigos
+  -> bot envia a quest atual: imagem de batalha com o card na legenda (carga de
+     cada golpe, descanso e botoes de golpe com o RPE)
 
 Usuario conclui o ultimo exercicio de uma sessao de um plano de A a E
   -> bot envia o resumo

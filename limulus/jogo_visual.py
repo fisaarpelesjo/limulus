@@ -533,3 +533,153 @@ def render_semana(estado):
         CINZA,
     )
     return _png(img, escala=4)
+
+
+# --------------------------------------------------------------------------
+# Batalha e encontro (um exercicio = um inimigo)
+# --------------------------------------------------------------------------
+
+ALTURA_CENA = 180
+CHAO = 112
+CEU_TOPO = (12, 10, 40)
+CEU_BASE = (58, 52, 120)
+MONTANHA = (34, 30, 78)
+GRAMA = (58, 120, 60)
+GRAMA_ESCURA = (40, 88, 46)
+TERRA = (96, 70, 44)
+
+
+def _cenario(imagem, chao=CHAO):
+    """Ceu em faixas, estrelas fixas, montanhas ao fundo e chao gramado."""
+    draw = ImageDraw.Draw(imagem)
+    largura = imagem.width
+    for y in range(0, chao, 4):
+        draw.rectangle((0, y, largura, y + 3), fill=_misturar(CEU_TOPO, CEU_BASE, y / chao))
+    for i in range(18):
+        sx, sy = (i * 73 + 11) % largura, (i * 37 + 5) % (chao - 40)
+        draw.point((sx, sy), fill=BRANCO if i % 3 else AMARELO)
+    picos = [(0, chao - 18), (40, chao - 40), (82, chao - 22), (130, chao - 48),
+             (176, chao - 24), (220, chao - 44), (268, chao - 20), (largura, chao - 36)]
+    draw.polygon(picos + [(largura, chao), (0, chao)], fill=MONTANHA)
+    draw.rectangle((0, chao, largura, imagem.height), fill=GRAMA)
+    draw.line((0, chao, largura, chao), fill=(120, 190, 110))
+    for y in range(chao + 4, imagem.height, 5):
+        for x in range((y * 7) % 13, largura, 13):
+            draw.line((x, y, x + 2, y), fill=GRAMA_ESCURA)
+
+
+def _sombra(imagem, cx, cy, largura):
+    ImageDraw.Draw(imagem).ellipse(
+        (cx - largura // 2, cy - 3, cx + largura // 2, cy + 3), fill=GRAMA_ESCURA
+    )
+
+
+def _pips(imagem, x_direita, cy, posicao, total, espaco_max=150):
+    """Bolinhas de progresso: feitos (ouro), atual (branco), proximos (escuro)."""
+    total = max(1, int(total))
+    passo = max(4, min(10, espaco_max // total))
+    raio = 3 if passo >= 8 else 1
+    draw = ImageDraw.Draw(imagem)
+    x0 = x_direita - (total - 1) * passo - raio
+    for i in range(total):
+        cx = x0 + i * passo
+        numero = i + 1
+        caixa = (cx - raio, cy - raio, cx + raio, cy + raio)
+        if numero < posicao:
+            draw.ellipse(caixa, fill=sp.OURO, outline=BORDA_ESCURA)
+        elif numero == posicao:
+            draw.ellipse((cx - raio - 1, cy - raio - 1, cx + raio + 1, cy + raio + 1), fill=AMARELO)
+            draw.ellipse(caixa, fill=BRANCO, outline=BORDA_ESCURA)
+        else:
+            draw.ellipse(caixa, fill=TRILHO, outline=CINZA_ESCURO)
+
+
+def render_batalha(inimigo, posicao, total, classe_base="FOR", nivel=1):
+    """Cena de batalha de um exercicio: inimigo a esquerda, heroi a direita.
+
+    `inimigo` e o nome de exibicao (chefe ou inimigo menor; nome desconhecido
+    vira o Cogumelo Bravo). A imagem nao mostra cargas; elas vao no texto.
+    """
+    total = max(1, int(total or 1))
+    posicao = max(1, min(total, int(posicao or 1)))
+    img = _nova_tela(ALTURA_CENA)
+    _cenario(img)
+
+    linhas, paleta = sp.sprite_do_inimigo(inimigo)
+    _sombra(img, 36 + 36, CHAO + 4, 56)
+    sp.desenhar_sprite(img, linhas, paleta, 36, CHAO - 66, 3)
+
+    estagio = sp.estagio_do_nivel(int(nivel or 1))
+    heroi, paleta_heroi = sp.sprite_do_heroi(classe_base, estagio)
+    largura_heroi, altura_heroi = sp.tamanho_sprite(heroi, 3)
+    hx = LARGURA - 36 - largura_heroi
+    _sombra(img, hx + largura_heroi // 2, CHAO + 4, 44)
+    sp.desenhar_sprite(img, heroi, paleta_heroi, hx, CHAO - altura_heroi + 6, 3, espelhar=True)
+
+    x0, w = MARGEM, LARGURA - 2 * MARGEM
+    y = ALTURA_CENA - 50 - MARGEM
+    janela(img, x0, y, w, 50)
+    cursor(img, x0 + 10, y + 9)
+    texto(img, x0 + 24, y + 6, f"INIMIGO {posicao}/{total}", AMARELO)
+    _pips(img, x0 + w - 14, y + 12, posicao, total)
+    nome = str(inimigo or sp.INIMIGO_PADRAO)
+    texto(img, x0 + 12, y + 21, cortar(nome, w - 24, 2), BRANCO, escala=2)
+    return _png(img)
+
+
+def _quebrar_nome(nome, largura_max):
+    """Ate duas linhas, quebrando por palavra; o resto e cortado."""
+    palavras = str(nome).split()
+    if not palavras:
+        return [""]
+    linhas = [palavras[0]]
+    for palavra in palavras[1:]:
+        tentativa = f"{linhas[-1]} {palavra}"
+        if sp.largura_texto(tentativa) <= largura_max:
+            linhas[-1] = tentativa
+        elif len(linhas) < 2:
+            linhas.append(palavra)
+        else:
+            linhas[-1] = tentativa
+    return [cortar(linha, largura_max) for linha in linhas[:2]]
+
+
+MAX_INIMIGOS_ENCONTRO = 6
+
+
+def render_encontro(inimigos, plano):
+    """Tela 'INIMIGOS APARECERAM!' com a fila de inimigos do treino."""
+    inimigos = [str(n) for n in (inimigos or [])]
+    mostrados = inimigos[:MAX_INIMIGOS_ENCONTRO]
+    extras = len(inimigos) - len(mostrados)
+    img = _nova_tela(ALTURA_CENA)
+    chao = 92
+    _cenario(img, chao)
+    x0, w = MARGEM, LARGURA - 2 * MARGEM
+
+    janela(img, x0, MARGEM, w, 24)
+    texto_centro(img, LARGURA // 2, MARGEM + 6, "INIMIGOS APARECERAM!", AMARELO)
+    if extras > 0:
+        texto_direita(img, x0 + w - 10, MARGEM + 6, f"+{extras}", BRANCO)
+
+    if mostrados:
+        vaga = w / len(mostrados)
+        escala = 2
+        for i, nome in enumerate(mostrados):
+            cx = round(x0 + vaga * i + vaga / 2)
+            linhas, paleta = sp.sprite_do_inimigo(nome)
+            largura, altura = sp.tamanho_sprite(linhas, escala)
+            _sombra(img, cx, chao + 2, 36)
+            sp.desenhar_sprite(img, linhas, paleta, cx - largura // 2, chao - altura + 6, escala)
+            for j, linha in enumerate(_quebrar_nome(nome, int(vaga) - 4)):
+                texto_centro(img, cx, chao + 6 + j * 11, linha, BRANCO)
+    else:
+        texto_centro(img, LARGURA // 2, chao - 30, "Nenhum inimigo à vista.", CINZA)
+
+    y = ALTURA_CENA - 46 - MARGEM
+    janela(img, x0, y, w, 46)
+    cursor(img, x0 + 10, y + 17)
+    texto(img, x0 + 24, y + 9, cortar(f"Treino {plano}", w - 120, 2), BRANCO, escala=2)
+    quantidade = len(inimigos)
+    texto_direita(img, x0 + w - 12, y + 15, f"{quantidade} inimigo{'s' if quantidade != 1 else ''}", CIANO)
+    return _png(img)

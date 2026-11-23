@@ -184,48 +184,72 @@ def _display_exercise_name(name):
     return ods_ops.get_display_name(name)
 
 
-def _format_current_exercise(ex):
+def _inimigo(ex):
+    try:
+        return jogo.inimigo_do_exercicio(db_ops.get_muscle_groups(ex["name"]))
+    except Exception:
+        return jogo.INIMIGO_PADRAO
+
+
+def _posicao(ex, exercises):
+    """(posicao, total) do exercicio na sessao, pelo log_id."""
+    if not exercises:
+        return None, None
+    for indice, item in enumerate(exercises, start=1):
+        if item.get("log_id") is not None and item.get("log_id") == ex.get("log_id"):
+            return indice, len(exercises)
+    return None, len(exercises)
+
+
+def _format_current_exercise(ex, exercises=None):
+    """Card da quest: cada exercicio e uma batalha contra um inimigo."""
     display_name = _display_exercise_name(ex["name"])
     target = ex.get("target_weight")
     equipment = ods_ops.LOAD_EQUIPMENT.get(ex["name"])
-    header = f"⚔ <b>{escape(display_name.upper())}</b>"
+    posicao, total = _posicao(ex, exercises)
+    numero = f" {posicao}/{total}" if posicao else ""
+    header = (
+        f"⚔ <b>QUEST{numero} · {escape(display_name.upper())}</b>\n"
+        f"👹 Derrote o <b>{escape(_inimigo(ex))}</b>!"
+    )
     set_weights = ods_ops.get_set_weights(ex["name"], target, ex["sets"])
-    body = []
     bar_weight = equipment["weight"] if equipment else 0.0
     per_hand = bool(equipment and equipment.get("per_hand"))
+    sufixo_mao = " por mão" if per_hand else ""
+    body = [f"📜 Objetivo: <b>{ex['sets']} golpes de {ex['reps']} repetições</b>"]
     for idx, weight in enumerate(set_weights, start=1):
-        load = max(weight - bar_weight, 0.0) if equipment else weight
-        label = "anilhas" if equipment else "carga"
-        if per_hand:
-            label += " por mão"
-        body.append(f"{idx}ª série: <b>{_format_weight(load)} kg</b> {label}")
-    if not set_weights:
-        body.append(f"Séries: <b>{ex['sets']}</b>")
-    body.extend([
-        f"Repetições: <b>{ex['reps']}</b>",
-        f"Descanso: <b>{escape(ex.get('rest_interval', '2 min'))}</b>",
-    ])
-    footer = []
+        final = idx == len(set_weights)
+        rotulo = "🎯 Golpe final" if final else f"⚔ Golpe {idx}"
+        if equipment:
+            load = max(weight - bar_weight, 0.0)
+            body.append(
+                f"{rotulo} · <b>{_format_weight(load)} kg</b> de anilhas{sufixo_mao}"
+                f" <i>(total {_format_weight(weight)} kg{sufixo_mao})</i>"
+            )
+        else:
+            body.append(f"{rotulo} · <b>{_format_weight(weight)} kg</b>")
+    footer = [f"⏳ Descanso entre golpes: <b>{escape(ex.get('rest_interval', '2 min'))}</b>"]
     if equipment:
         bar_name = (
             equipment['name'].replace('barra reta ', '').removeprefix('barra ').removeprefix('de ')
         )
         footer.append(
-            f"<i>Barra: {escape(bar_name)} · {_format_weight(equipment['weight'])} kg"
-            f"{' (uma em cada mão)' if per_hand else ''}</i>"
+            f"🏋 Barra {escape(bar_name)} · {_format_weight(equipment['weight'])} kg"
+            f"{' (uma em cada mão)' if per_hand else ''}"
         )
     if target is not None:
-        total_label = "Total com barra" if equipment else "Carga total"
-        if per_hand:
-            total_label = "Total por mão"
-        footer.append(
-            f"<i>{total_label}: "
-            f"{' · '.join(_format_weight(w) for w in set_weights)} kg</i>"
-        )
-        footer.append("<i>RPE da última série</i>")
+        footer.append("🎯 <i>Depois do golpe final, como foi?</i>")
     else:
         footer.append("Carga alvo ainda não definida. Envie a carga total para este exercício.")
     return "\n\n".join([header, "\n".join(body), "\n".join(footer)])
+
+
+def _format_quest_result(ex, weight, rpe):
+    exp = round(jogo.EXP_SERIE * jogo.aderencia_rpe(int(rpe)))
+    return (
+        f"💥 <b>{jogo.nome_do_golpe(rpe)}!</b> {_format_weight(weight)} kg · RPE {rpe}\n"
+        f"✅ <b>Quest completa:</b> {escape(_inimigo(ex))} derrotado! <b>+{exp} EXP</b>"
+    )
 
 
 def _format_exercise_line(idx, ex):
@@ -367,16 +391,56 @@ def telegram_call(method, payload, files=None):
         return False, "falha de rede"
 
 
-def send_current_exercise(ex):
+def _botoes_golpe(token):
+    botoes = [
+        {"text": rotulo, "callback_data": f"rpe:{token}:{valor}"}
+        for rotulo, valor, _ in jogo.GOLPES_RPE
+    ]
+    return {"inline_keyboard": [botoes[:2], botoes[2:]]}
+
+
+# file_id das telas de batalha ja enviadas: reenviar pelo id e instantaneo.
+_CACHE_BATALHA = {}
+
+
+def _send_batalha(ex, exercises, caption, markup):
+    """Envia a tela de batalha com o card na legenda; devolve False se nao der."""
+    visual = _visual()
+    if visual is None or not hasattr(visual, "render_batalha"):
+        return False
+    try:
+        posicao, total = _posicao(ex, exercises)
+        estado = jogo.estado_atual()
+        inimigo = _inimigo(ex)
+        nivel = estado["nivel"]
+        estagio = 0 if nivel < 10 else 1 if nivel < 30 else 2
+        chave = (inimigo, posicao, total, estado["classe_base"], estagio)
+        payload = {"chat_id": CHAT_ID, "caption": caption, "parse_mode": "HTML"}
+        if markup:
+            payload["reply_markup"] = markup
+        if chave in _CACHE_BATALHA:
+            ok, resultado = telegram_call("sendPhoto", dict(payload, photo=_CACHE_BATALHA[chave]))
+            if ok:
+                return True
+        png = visual.render_batalha(inimigo, posicao or 1, total or 1, estado["classe_base"], estado["nivel"])
+        ok, resultado = telegram_call("sendPhoto", payload, files={"photo": ("batalha.png", png, "image/png")})
+        if ok and isinstance(resultado, dict) and resultado.get("photo"):
+            _CACHE_BATALHA[chave] = resultado["photo"][-1]["file_id"]
+        return ok
+    except Exception as exc:
+        LOGGER.error("Falha na tela de batalha tipo=%s", type(exc).__name__)
+        return False
+
+
+def send_current_exercise(ex, exercises=None):
     markup = None
     target = ex.get("target_weight")
     if target is not None and target > 0:
         token = db_ops.criar_botoes_rpe(ex['log_id'], target)
-        markup = {"inline_keyboard": [[
-            {"text": label, "callback_data": f"rpe:{token}:{value}"}
-            for label, value in [("RPE ≤7", 7), ("RPE 8", 8), ("RPE 9", 9), ("RPE ≥10", 10)]
-        ]]}
-    send(_format_current_exercise(ex), reply_markup=markup)
+        markup = _botoes_golpe(token)
+    texto = _format_current_exercise(ex, exercises)
+    if not _send_batalha(ex, exercises, texto, markup):
+        send(texto, reply_markup=markup)
 
 
 def send_completion(session):
@@ -684,28 +748,37 @@ def handle_rpe_callback(query):
         return
     ex = next(ex for ex in session['exercises'] if ex['log_id'] == result['log_id'])
     ex = dict(ex, target_weight=result['weight'])
-    exp_serie = round(jogo.EXP_SERIE * jogo.aderencia_rpe(int(parts[2])))
-    confirmation = f"✓ {_format_weight(result['weight'])} kg · RPE {parts[2]} · <b>+{exp_serie} EXP</b>"
-    edited = telegram_action('editMessageText', {
-        'chat_id': CHAT_ID, 'message_id': message['message_id'], 'parse_mode': 'HTML',
-        'text': _format_current_exercise(ex) + '\n\n' + confirmation,
-        'reply_markup': {'inline_keyboard': []},
-    })
+    confirmation = _format_quest_result(ex, result['weight'], int(parts[2]))
+    texto = _format_current_exercise(ex, session['exercises']) + '\n\n' + confirmation
+    if message.get('photo'):
+        edited = telegram_action('editMessageCaption', {
+            'chat_id': CHAT_ID, 'message_id': message['message_id'], 'parse_mode': 'HTML',
+            'caption': texto, 'reply_markup': {'inline_keyboard': []},
+        })
+    else:
+        edited = telegram_action('editMessageText', {
+            'chat_id': CHAT_ID, 'message_id': message['message_id'], 'parse_mode': 'HTML',
+            'text': texto, 'reply_markup': {'inline_keyboard': []},
+        })
     if not edited:
         send(confirmation)
     filled = db_ops.count_filled([ex['log_id'] for ex in session['exercises']])
     if filled == len(session['exercises']):
         send_completion(session)
     else:
-        send_current_exercise(session['exercises'][filled])
+        send_current_exercise(session['exercises'][filled], session['exercises'])
 
 
 def handle_generate():
     session = load_session()
     if session:
         filled = db_ops.count_filled([ex['log_id'] for ex in session['exercises']])
-        send("⚔ Treino em andamento. Continue pelo exercício abaixo.", reply_markup={"remove_keyboard": True})
-        send_current_exercise(session['exercises'][filled])
+        total = len(session['exercises'])
+        send(
+            f"⚔ Batalha em andamento — quest {filled + 1}/{total}. Continue abaixo.",
+            reply_markup={"remove_keyboard": True},
+        )
+        send_current_exercise(session['exercises'][filled], session['exercises'])
         return
     try:
         exercises, session_id = ods_ops.generate_training()
@@ -723,14 +796,17 @@ def handle_generate():
         send("O plano não tem exercícios. Consulte /planos.", reply_markup=KEYBOARD_START)
         return
     start = datetime.fromisoformat(db_ops.get_session_timing(session_id)['started_at'])
+    plano = (db_ops.get_active_training_plan() or {}).get("name", "")
     send(
-        f"⚔ <b>Nova batalha!</b>\nData: <b>{start:%d/%m/%Y}</b>\n"
-        f"Horário: <b>{start:%H:%M}</b> (Brasília)\n\n"
-        "Ao terminar cada exercício, toque no RPE para registrar a carga indicada.",
+        f"⚔ <b>BATALHA INICIADA!</b>\n"
+        f"🗺 Treino {escape(plano)} · {jogo.DIAS_SEMANA_LONGOS[start.weekday()]}, "
+        f"{start:%d/%m} · {start:%H:%M}\n"
+        f"👹 <b>{len(exercises)} quests</b> pela frente\n\n"
+        "Em cada quest, faça os golpes e toque no botão do golpe final.",
         reply_markup={"remove_keyboard": True},
     )
-    if exercises:
-        send_current_exercise(exercises[0])
+    send_image("render_encontro", [_inimigo(ex) for ex in exercises], plano)
+    send_current_exercise(exercises[0], exercises)
 
 
 def handle_preview():
@@ -1011,12 +1087,12 @@ def handle(text, session):
                 f"✓ {_display_exercise_name(exercises[i]['name'])}"
                 for i in range(filled)
             )
-            msg = f"⚔ Batalha em andamento — {filled}/{total}\n"
+            msg = f"⚔ Batalha em andamento — {filled}/{total} quests completas\n"
             if done:
                 msg += done + "\n"
             msg += weight_line
             send(msg, reply_markup={"remove_keyboard": True})
-            send_current_exercise(ex)
+            send_current_exercise(ex, exercises)
         return
 
     if text.lower() == "/desfazer":
@@ -1026,7 +1102,7 @@ def handle(text, session):
         last_ex = exercises[filled - 1]
         db_ops.update_log_weight(last_ex["log_id"], None, None)
         send(f"↩ Turno desfeito: <b>{_display_exercise_name(last_ex['name'])}</b>", reply_markup={"remove_keyboard": True})
-        send_current_exercise(last_ex)
+        send_current_exercise(last_ex, exercises)
         return
 
     if filled >= total:
@@ -1053,7 +1129,7 @@ def handle(text, session):
         send_completion(session)
     else:
         nxt = exercises[new_filled]
-        send_current_exercise(nxt)
+        send_current_exercise(nxt, exercises)
 
 
 def main():

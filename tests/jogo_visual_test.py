@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -178,10 +179,53 @@ def _assert_historico_e_level_up():
         _verificar_png(jogo_visual.render_ficha(dict(extremo, classe_base=classe, nivel=15)))
 
 
+def _verificar_cena(dados):
+    imagem = _verificar_png(dados)
+    assert imagem.height <= 540, imagem.size
+    assert len(dados) < 25_000, len(dados)
+    return imagem
+
+
+def _assert_batalha_e_encontro():
+    for nome in ("Diabrete Rúnico", "Morcego de Ferro", "Cogumelo Bravo"):
+        linhas, paleta = jogo_sprites.sprite_do_inimigo(nome)
+        assert len(linhas) == 24 and all(len(l) == 24 for l in linhas)
+        assert all(c == "." or c in paleta for l in linhas for c in l)
+        assert jogo_sprites.sprite_do_chefe(nome) == (linhas, paleta)
+    # Chefes servem de inimigo comum; nome desconhecido vira cogumelo.
+    assert jogo_sprites.sprite_do_inimigo("Golem de Ferro") == jogo_sprites.sprite_do_chefe("Golem de Ferro")
+    assert jogo_sprites.sprite_do_inimigo("Lagarto Qualquer") == jogo_sprites.sprite_do_inimigo("Cogumelo Bravo")
+
+    batalha = jogo_visual.render_batalha("Golem de Ferro", 2, 5, "FOR", 12)
+    _verificar_cena(batalha)
+    _salvar("batalha.png", batalha)
+    for classe, nivel in (("VIG", 1), ("DIS", 45)):
+        _verificar_cena(jogo_visual.render_batalha("Diabrete Rúnico", 5, 5, classe, nivel))
+    longa = jogo_visual.render_batalha("Inimigo Desconhecido de Nome Gigantesco Demais", 1, 1, "XYZ", 99)
+    _verificar_cena(longa)
+    _salvar("batalha_desconhecido.png", longa)
+    _verificar_cena(jogo_visual.render_batalha("Morcego de Ferro", 9, 11, "FOR", 30))
+
+    cinco = ["Golem de Ferro", "Morcego de Ferro", "Titã do Céu", "Diabrete Rúnico", "Cogumelo Bravo"]
+    _salvar("encontro.png", jogo_visual.render_encontro(cinco, "A"))
+    _verificar_cena(jogo_visual.render_encontro(cinco, "A"))
+    _verificar_cena(jogo_visual.render_encontro(["Serpente do Abismo"], "C"))
+    oito = cinco + ["Ogro da Montanha", "Grifo Sombrio", "Serpente do Abismo Ancestral Muito Comprida"]
+    dados = jogo_visual.render_encontro(oito, "Força com nome de plano bem comprido")
+    _verificar_cena(dados)
+    _salvar("encontro_oito.png", dados)
+    _verificar_cena(jogo_visual.render_encontro([], "B"))
+
+    inicio = time.perf_counter()
+    jogo_visual.render_batalha("Golem de Ferro", 3, 5, "FOR", 12)
+    assert time.perf_counter() - inicio < 0.5
+
+
 def main():
     _assert_fonte_e_sprites()
     _assert_estado_vazio()
     _assert_historico_e_level_up()
+    _assert_batalha_e_encontro()
     print("jogo_visual_test: ok")
 
 

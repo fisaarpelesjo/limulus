@@ -427,6 +427,24 @@ def _assert_fluxo_telegram():
             telegram_poller.handle_pause("/pausa fim")
             assert "Nenhuma pausa" in mensagens[-1][0]
 
+            # Quest enviada como tela de batalha com o card na legenda.
+            api = _ApiFalsa()
+            telegram_poller.telegram_call = api
+            quest_sid = db_ops.create_session("2026-11-24", "A")
+            quest_log = db_ops.log_exercise(quest_sid, "Supino reto (barra)", 3, 12, 0)
+            ex = {"log_id": quest_log, "name": "Supino reto (barra)", "sets": 3, "reps": 12,
+                  "target_weight": 35, "rest_interval": "2 min"}
+            telegram_poller.send_current_exercise(ex, [ex])
+            metodo, payload, arquivos = api.chamadas[-1]
+            assert metodo == "sendPhoto" and arquivos is not None
+            assert "QUEST 1/1" in payload["caption"] and "Golem de Ferro" in payload["caption"]
+            linhas = payload["reply_markup"]["inline_keyboard"]
+            assert [len(linha) for linha in linhas] == [2, 2]
+            assert linhas[0][1]["text"].startswith("⚔ Certeiro")
+            assert "Quest completa" in telegram_poller._format_quest_result(ex, 35, 8)
+            assert "Golpe crítico" in telegram_poller._format_quest_result(ex, 35, 9)
+            assert jogo.nome_do_golpe(6) == "Golpe leve" and jogo.nome_do_golpe(11) == "Golpe no limite"
+
             # Sem modulo de imagens, os comandos seguem em texto.
             telegram_poller._visual = lambda: None
             telegram_poller.handle_profile()

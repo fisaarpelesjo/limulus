@@ -88,11 +88,11 @@ def main():
             assert supino_inclinado["rest_interval"] == "90 s"
             assert supino_inclinado["loading_note"] == "barra reta 2,20 m 11kg + 30kg de anilhas"
             assert supino_inclinado["reps"] == 12
-            assert "Descanso: <b>2 min</b>" in sent_messages[-1]
-            assert "Nova batalha!" in sent_messages[-2]
+            assert "Descanso entre golpes: <b>2 min</b>" in sent_messages[-1]
+            assert "BATALHA INICIADA!" in sent_messages[-2]
             assert "Carga alvo ainda não definida." in sent_messages[-1]
             assert (
-                "<b>SUPINO RETO</b>\n\nSéries: <b>3</b>"
+                "SUPINO RETO</b>\n👹 Derrote o"
                 in sent_messages[-1]
             )
 
@@ -133,10 +133,10 @@ def main():
             progressed_first = progressed_session["exercises"][0]
             assert progressed_first["target_weight"] == 82.0
             assert "82" in sent_messages[-1]
-            assert "Descanso: <b>2 min</b>" in sent_messages[-1]
-            assert "1ª série: <b>54 kg</b> anilhas" in sent_messages[-1]
-            assert "3ª série: <b>71 kg</b> anilhas" in sent_messages[-1]
-            assert "Total com barra: 65 · 73 · 82 kg" in sent_messages[-1]
+            assert "Descanso entre golpes: <b>2 min</b>" in sent_messages[-1]
+            assert "Golpe 1 · <b>54 kg</b> de anilhas" in sent_messages[-1]
+            assert "Golpe final · <b>71 kg</b> de anilhas" in sent_messages[-1]
+            assert "(total 82 kg)" in sent_messages[-1]
 
             telegram_poller.handle("/status", session)
             assert "Batalha em andamento" in sent_messages[-2]
@@ -166,16 +166,16 @@ def main():
             assert ods_ops.format_loading_note("Elevação lateral", 6.0) == "barra de 40 cm em cada mao + 6kg de anilhas por mao"
             elevacao = {"name": "Elevação lateral", "sets": 4, "reps": 15, "target_weight": 4.0}
             elevacao_texto = telegram_poller._format_current_exercise(elevacao)
-            assert "4ª série: <b>4 kg</b> anilhas por mão" in elevacao_texto
-            assert "Barra: 40 cm · 0 kg (uma em cada mão)" in elevacao_texto
-            assert "Total por mão: 2 · 2 · 2 · 4 kg" in elevacao_texto
+            assert "Golpe final · <b>4 kg</b> de anilhas por mão" in elevacao_texto
+            assert "Barra 40 cm · 0 kg (uma em cada mão)" in elevacao_texto
+            assert "(total 2 kg por mão)" in elevacao_texto and "4 golpes de 15" in elevacao_texto
             assert ods_ops.format_loading_note("Rosca inversa (barra)", 19.0) == "barra reta 2,20 m 11kg + 8kg de anilhas"
             assert ods_ops.format_loading_note("Agachamento sumô com barra à frente", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             assert ods_ops.format_loading_note("Supino reto (barra)", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             assert ods_ops.format_loading_note("Remada curvada (barra)", 40.0) == "barra reta 2,20 m 11kg + 29kg de anilhas"
             triceps = {"name": "Tríceps testa", "sets": 3, "reps": 8, "target_weight": 18.0}
-            assert "3ª série: <b>12 kg</b> anilhas" in telegram_poller._format_current_exercise(triceps)
-            assert "Barra: W · 6 kg" in telegram_poller._format_current_exercise(triceps)
+            assert "Golpe final · <b>12 kg</b> de anilhas" in telegram_poller._format_current_exercise(triceps)
+            assert "Barra W · 6 kg" in telegram_poller._format_current_exercise(triceps)
             assert "barra W" not in telegram_poller._format_training_msg([triceps])
 
             telegram_poller.handle("80.5 10", maintained_session)

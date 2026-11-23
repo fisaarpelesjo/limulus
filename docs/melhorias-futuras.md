@@ -541,6 +541,17 @@ acesso (o bot hoje se protege pelo chat) e se havera notificacoes push.
 
 ### 2026-11-23
 
+- treino em formato de quest: cada exercicio e uma batalha contra um inimigo
+  escolhido pelo grupo muscular principal (`jogo.INIMIGOS_POR_GRUPO`, com tres
+  monstros menores novos: Diabrete Rúnico, Morcego de Ferro e Cogumelo Bravo);
+  inicio "⚔ BATALHA INICIADA!" com imagem de encontro; cada quest enviada como
+  imagem de batalha (`render_batalha`, `file_id` em cache) com o card na
+  legenda e fallback em texto; card com "⚔ QUEST i/n", objetivo em golpes e
+  `🎯 Golpe final`; botoes 2x2 de golpe (Leve, Certeiro, Crítico, No limite)
+  gravando RPE 7 a 10 como antes; confirmacao "💥 <Golpe>!" e "✅ Quest
+  completa". Substitui o card antigo (header em caixa alta, `1ª série`,
+  `Total com barra`, `RPE da última série`, "⚔ Nova batalha!" e botoes
+  `RPE ≤7`/`8`/`9`/`≥10`)
 - jogo estilo JRPG, fases 2 e 3 (schema 16, tabelas `jogo_estado`,
   `jogo_compras` e `jogo_pausas`): classes pelo atributo dominante que evoluem
   com o nivel; atributos FOR (forca relativa nos chefes), VIG (series

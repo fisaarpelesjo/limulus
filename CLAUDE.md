@@ -116,33 +116,41 @@ testes do jogo devem substituir essa funcao.
 Comandos principais em PT-BR:
 
 - `/gerar` e o teclado "⚔ Iniciar treino" iniciam ou retomam a sessao, sem lista
-  completa. Enviam data/hora de Brasilia e o primeiro exercicio. O teclado
+  completa. O teclado
   some durante o treino e volta ao concluir. Os textos "⚔ Iniciar treino" e
   "🍖 Ver dieta" sao as unicas excecoes aos comandos com barra. Comando
   invalido sem sessao ativa responde com o teclado de inicio, para que um
-  teclado antigo no celular seja substituido. Botoes RPE
-  ≤7, 8, 9 e ≥10 registram a carga exibida (extremos armazenados como 7 e 10);
-  nao ha botao sem RPE.
-  Header `⚔ NOME` em caixa alta; body com uma linha por serie da piramide, repeticoes e
-  descanso, valores em negrito; footer em italico com barra, total por serie e
-  "RPE da última série".
-  Sem alvo, pedir a primeira carga manualmente.
-  O exercicio atual em `/gerar`, `/status` e no proximo exercicio usa blocos
-  separados por linhas em branco: nome; uma linha por serie
-  (`1ª série: **X kg** anilhas`, ou `carga` sem equipamento fixo), repeticoes e
-  descanso com valores em negrito; barra, `Total com barra: 65 · 73 · 82 kg` e
-  `RPE da última série` em italico. Nao ha linha unica de anilhas nem linha de
-  series; `Séries: N` so aparece sem alvo. Nao usar o prefixo "Comece por".
-  A lista de `/prever` mostra o alvo como `65→73→82kg`.
-- Tom JRPG leve nas mensagens: header do exercicio `⚔ NOME` em caixa alta;
-  inicio "⚔ Nova batalha!"; retomada "⚔ Treino em andamento..."; `/status`
-  "⚔ Batalha em andamento — X/Y" ou "🏁 Treino completo."; `/desfazer`
-  "↩ Turno desfeito: NOME"; o clique no RPE mostra o aviso "Golpe registrado! ⚔"
-  e edita a mensagem com "✓ 57 kg · RPE 8 · +10 EXP" (EXP da serie = 10 x
-  aderencia do RPE, de `limulus/jogo.py`); conclusao "🏁 TREINO CONCLUÍDO" com
+  teclado antigo no celular seja substituido. Enviam "⚔ BATALHA
+  INICIADA!", a imagem de encontro e a primeira quest (formato abaixo).
+- Formato de quest (tom JRPG): cada exercicio do treino e uma quest contra um
+  inimigo escolhido pelo grupo muscular principal do exercicio
+  (`jogo.INIMIGOS_POR_GRUPO`, via `jogo.inimigo_do_exercicio`; sem grupo
+  mapeado, `jogo.INIMIGO_PADRAO` = Cogumelo Bravo). Inicio "⚔ BATALHA
+  INICIADA!" com plano, dia da semana (`jogo.DIAS_SEMANA_LONGOS`), data, hora e
+  numero de quests, seguido da imagem `render_encontro` com a fila de inimigos;
+  retomada "⚔ Batalha em andamento — quest i/n"; `/status` "⚔ Batalha em
+  andamento — i/n quests completas" ou "🏁 Treino completo."; `/desfazer`
+  "↩ Turno desfeito: NOME"; conclusao "🏁 TREINO CONCLUÍDO" com
   "⭐ Recordes: ..."; `/prever` "🔮 Treino de hoje — N exercícios"; `/ajuda`
   "📜 Menu do Limulus"; `/volume` 📊, `/planos` 🗺, `/dieta` "🍖 DIETA ATUAL",
-  `/peso` e `/cintura` 📏. Os rotulos dos botoes RPE nao mudam.
+  `/peso` e `/cintura` 📏.
+- Cada quest (`send_current_exercise(ex, exercises)`) sai como foto da tela de
+  batalha (`jogo_visual.render_batalha`; o `file_id` fica em `_CACHE_BATALHA`
+  para reenviar a mesma tela na hora) com o card na legenda (`_send_batalha`);
+  se a imagem falhar, o card vai como mensagem de texto. Card
+  (`_format_current_exercise`): header `⚔ QUEST i/n · NOME` e "👹 Derrote o
+  <inimigo>!"; "📜 Objetivo: N golpes de R repetições"; uma linha por serie da
+  piramide, `⚔ Golpe k · X kg de anilhas (total Y kg)` e `🎯 Golpe final` na
+  serie de topo (sem equipamento fixo, so `X kg`; com `per_hand`, `por mão`);
+  footer "⏳ Descanso entre golpes", "🏋 Barra ..." e "🎯 Depois do golpe final,
+  como foi?". Sem alvo, o card pede a primeira carga manualmente. Botoes 2x2 de
+  golpe (`_botoes_golpe`, `jogo.GOLPES_RPE`): "🛡 Leve · RPE ≤7", "⚔ Certeiro ·
+  RPE 8", "🔥 Crítico · RPE 9" e "💀 No limite · RPE 10", gravados como 7, 8, 9
+  e 10; nao ha botao sem RPE. O clique mostra o aviso "Golpe registrado! ⚔" e
+  edita a legenda (`editMessageCaption`, quando a mensagem e foto) ou o texto
+  (`editMessageText`) com "💥 <Golpe>! X kg · RPE n" e "✅ Quest completa:
+  <inimigo> derrotado! +N EXP" (`_format_quest_result`; EXP = 10 x aderencia do
+  RPE). A lista de `/prever` continua em texto, com o alvo como `65→73→82kg`.
 - `/prever` mostra o treino em texto sem salvar sessao ou logs.
 - `/treinob` mostra o Treino B de garagem com pesos calculados pelos alvos de
   Terra Romeno e Remada curvada lidos do historico, sem criar sessao ou logs.
@@ -169,7 +177,7 @@ Comandos principais em PT-BR:
 - `80` ou `80 8` registra carga e RPE opcional.
 - `/aquecimento` mostra uma sequencia dinamica curta de corpo todo, com cerca
   de 5 minutos, sem prescrever um segundo treino.
-- O texto de `/gerar` mostra `alvo`, calculado pela ultima carga do exercicio e pelo RPE, e `descanso`.
+- O card da quest mostra as cargas da piramide a partir do alvo, calculado pela ultima carga do exercicio e pelo RPE, e o descanso.
 - Ao carregar, `session.json` e validado contra o SQLite. Arquivo ausente,
   corrompido ou antigo e reconstruido pela sessao mais recente com logs
   pendentes; sessoes completas nao sao reabertas.
@@ -228,6 +236,13 @@ declaradas) e `jogo_estado` (chave/valor, por exemplo `hud_mensagem`).
   Classe pelo atributo dominante (FOR Guerreiro, VIG Barbaro, DIS Monge), com
   nome que evolui nos niveis 10 e 30.
 - Diario: uma linha por sessao (ultimas 30 no estado).
+- Quests do treino: `INIMIGOS_POR_GRUPO` liga o grupo muscular principal do
+  exercicio a um inimigo (os cinco chefes mais Diabrete Rúnico para triceps e
+  Morcego de Ferro para biceps e antebraco); `inimigo_do_exercicio(grupos)`
+  devolve `INIMIGO_PADRAO` (Cogumelo Bravo) sem grupo mapeado. `GOLPES_RPE`
+  define os botoes de golpe (rotulo, valor gravado, nome do golpe),
+  `nome_do_golpe(rpe)` o nome usado na confirmacao e `DIAS_SEMANA_LONGOS` o
+  dia da mensagem de inicio.
 - Textos HTML do Telegram: `formatar_vitoria`, `formatar_perfil`,
   `formatar_chefes`, `formatar_semana`, `formatar_missoes`,
   `formatar_conquistas`, `formatar_diario`, `formatar_loja` e `formatar_hud`
@@ -243,10 +258,13 @@ Falha no calculo do jogo so gera log e nunca interrompe o treino. Testes:
 ### `limulus/jogo_visual.py` e `limulus/jogo_sprites.py`
 
 Telas do jogo em PNG com Pillow, no estilo de janela de menu JRPG azul
-classica: `render_ficha`, `render_vitoria`, `render_chefes` e
-`render_semana`, desenhadas em 320 px de largura e ampliadas por vizinho mais
+classica: `render_ficha`, `render_vitoria`, `render_chefes`,
+`render_semana`, `render_batalha` (cena da quest: inimigo a esquerda, heroi a
+direita, sem cargas na imagem) e `render_encontro` (fila de inimigos do
+treino), desenhadas em 320 px de largura e ampliadas por vizinho mais
 proximo. `jogo_sprites.py` guarda a pixel art original (herois por classe e
-estagio, cinco chefes, icones) e uma fonte bitmap propria, porque a fonte
+estagio, cinco chefes, tres monstros menores, Diabrete Rúnico, Morcego de
+Ferro e Cogumelo Bravo, via `sprite_do_inimigo`, e icones) e uma fonte bitmap propria, porque a fonte
 `load_default` do Pillow nao tem os acentos do portugues; os acentos sao
 compostos pela decomposicao NFD. `pillow` esta em `requirements.txt`; sem ele
 o bot segue so em texto. `LIMULUS_AMOSTRAS=<pasta> python
@@ -341,7 +359,7 @@ Catalogo atual:
   (barra)` tem alvo inicial de 41 kg quando ainda nao houver historico proprio;
   depois disso usam a progressao por RPE.
 - `target_weight` fica em `session.json`.
-- `rest_interval` fica em `session.json` e aparece em `/gerar`, `/status` e proximo exercicio.
+- `rest_interval` fica em `session.json` e aparece no card de cada quest (`⏳ Descanso entre golpes`).
 - Descansos (`REST_INTERVALS`): agachamento com barra nas costas e supino reto
   back-off 3 min; Agachamento Zercher, supino reto e Terra Romeno 2 min; supino
   inclinado, remada curvada, desenvolvimento, remada curvada alta no peito e
@@ -349,7 +367,7 @@ Catalogo atual:
   elevacao lateral, rosca direta e rosca martelo 60 s; remada apoiada no
   banco 90 s e crucifixo invertido apoiado 60 s; demais 2 min.
 - `Rosca de punho atrás das costas (barra)` usa 3x15 e alvo inicial de 11 kg.
-- `loading_note` fica em `session.json` quando houver equipamento fixo e aparece apenas no exercicio atual/proximo, nao na lista `/exercicios`.
+- `loading_note` fica em `session.json` quando houver equipamento fixo; o card da quest mostra a montagem por golpe (`X kg de anilhas (total Y kg)`) e a linha `🏋 Barra ...`, e a observacao em texto so aparece no `/treinob`, nunca na lista `/exercicios`.
 - Nomes visiveis no bot e dashboard podem usar `ods_ops.get_display_name()` para
   ocultar qualificadores como `(barra)`, `(barra H)` e `(barra em pé)`. Nao
   renomear os nomes canonicos no SQLite para isso, pois eles sao usados no
@@ -361,9 +379,9 @@ Catalogo atual:
   `barra reta 2,20 m 11kg + Xkg de anilhas`.
 - `Tríceps testa`, `Pullover (barra)` e `Rosca direta` usam barra W de 6 kg; a observacao mostra a carga total como `barra W 6kg + Xkg de anilhas`.
 - `LOAD_EQUIPMENT` aceita o campo opcional `per_hand`. Com ele, `format_loading_note()` devolve `barra de 40 cm em cada mao + Xkg de
-  anilhas por mao` e `_format_current_exercise()` mostra `anilhas por mão`
-  em cada serie, `Barra: 40 cm · 0 kg (uma em cada mão)` e `Total por mão`
-  no lugar de `Total com barra`. Usam `per_hand`: `Elevação lateral`,
+  anilhas por mao` e `_format_current_exercise()` mostra `de anilhas por mão`
+  e `(total Y kg por mão)` em cada golpe e `🏋 Barra 40 cm · 0 kg (uma em
+  cada mão)`. Usam `per_hand`: `Elevação lateral`,
   `Remada apoiada no banco (barras 40 cm)` e `Crucifixo invertido apoiado (barras 40 cm)`.
 - `Rosca inversa (barra)` usa barra reta de 2,20 m e 11 kg; a observacao mostra a carga total como `barra reta 2,20 m 11kg + Xkg de anilhas`.
 - Planos (schema 15), divisao de segunda a sexta, cerca de 32-37 min por sessao,

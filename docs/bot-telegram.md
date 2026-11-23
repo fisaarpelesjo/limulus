@@ -11,41 +11,66 @@ Ele usa long polling pela API HTTP do Telegram. Nao ha webhook nem servidor web.
 ## Fluxo Por Botoes
 
 O teclado "⚔ Iniciar treino" inicia ou retoma a sessao e desaparece enquanto ela
-esta ativa. Uma mensagem "⚔ Nova batalha!" informa data/hora de Brasilia,
-seguida do exercicio atual, sem lista completa; na retomada o aviso e
-"⚔ Treino em andamento...". O header e o nome em caixa alta com o prefixo `⚔`
-(tom JRPG leve); o body mostra uma
-linha por serie da piramide crescente, depois repeticoes e descanso, com
-valores em negrito; o footer usa italico para barra, total com barra por serie
-e `RPE da última série`. Exemplo com alvo de 82 kg na barra de 11 kg:
+esta ativa. O treino segue o formato de quest: cada exercicio e uma batalha
+contra um inimigo escolhido pelo grupo muscular principal do exercicio
+(`jogo.INIMIGOS_POR_GRUPO`). Peitoral enfrenta o Golem de Ferro; quadriceps e
+adutores, o Ogro da Montanha; posteriores e gluteos, a Serpente do Abismo;
+dorsais e trapezio, o Grifo Sombrio; deltoides, o Titã do Céu; triceps, o
+Diabrete Rúnico; biceps e antebraco, o Morcego de Ferro. Sem grupo mapeado, o
+inimigo e o Cogumelo Bravo (`jogo.INIMIGO_PADRAO`).
+
+Ao iniciar, a mensagem "⚔ BATALHA INICIADA!" mostra o plano, o dia da semana,
+a data e a hora de Brasilia e quantas quests ha pela frente, seguida da imagem
+de encontro (`render_encontro`) com a fila de inimigos. Na retomada o aviso e
+"⚔ Batalha em andamento — quest i/n". Nao ha lista completa.
+
+Cada quest (`send_current_exercise(ex, exercises)`) chega como foto da tela de
+batalha (`render_batalha`, inimigo a esquerda e heroi a direita) com o card na
+legenda. O `file_id` de cada tela fica em `_CACHE_BATALHA`, entao a mesma tela
+e reenviada na hora. Se a imagem falhar, o card vai como mensagem de texto.
+Exemplo com alvo de 82 kg na barra de 11 kg:
 
 ```text
-⚔ SUPINO RETO
+⚔ QUEST 1/5 · SUPINO RETO
+👹 Derrote o Golem de Ferro!
 
-1ª série: 54 kg anilhas
-2ª série: 62 kg anilhas
-3ª série: 71 kg anilhas
-Repetições: 8
-Descanso: 2 min
+📜 Objetivo: 3 golpes de 12 repetições
+⚔ Golpe 1 · 54 kg de anilhas (total 65 kg)
+⚔ Golpe 2 · 62 kg de anilhas (total 73 kg)
+🎯 Golpe final · 71 kg de anilhas (total 82 kg)
 
-Barra: barra reta 2,20 m · 11 kg
-Total com barra: 65 · 73 · 82 kg
-RPE da última série
+⏳ Descanso entre golpes: 2 min
+🏋 Barra 2,20 m · 11 kg
+🎯 Depois do golpe final, como foi?
 ```
 
-Sem equipamento fixo, a linha usa `carga` em vez de `anilhas`. Nao ha linha
-unica de anilhas nem linha de series; `Séries: N` so aparece quando ainda nao
-ha alvo, junto do pedido da primeira carga.
+Sem equipamento fixo, cada golpe mostra so a carga (`⚔ Golpe 1 · 20 kg`). Sem
+alvo, o card troca a pergunta final pelo pedido da primeira carga.
 
-Os quatro botoes RPE ≤7, 8, 9 e ≥10 registram a carga de topo exibida (os
-extremos sao armazenados como 7 e 10); o RPE se refere a ultima serie. Nao ha botao sem RPE. O clique mostra
-o aviso "Golpe registrado! ⚔", a mensagem anterior recebe a confirmacao
-`✓ 57 kg · RPE 8 · +10 EXP` (EXP da serie = 10 x aderencia do RPE) e perde os
-botoes; em seguida aparece o proximo exercicio. O resumo final
+Os quatro botoes de golpe, em grade 2x2 (`_botoes_golpe`, `jogo.GOLPES_RPE`),
+registram a carga de topo exibida com o RPE da ultima serie:
+
+```text
+🛡 Leve · RPE ≤7      ⚔ Certeiro · RPE 8
+🔥 Crítico · RPE 9    💀 No limite · RPE 10
+```
+
+Os valores gravados continuam 7, 8, 9 e 10; nao ha botao sem RPE. O clique
+mostra o aviso "Golpe registrado! ⚔" e a mensagem da quest recebe a
+confirmacao, sem os botoes: a legenda e editada com `editMessageCaption`
+quando a mensagem e foto, e o texto com `editMessageText` quando e texto.
+
+```text
+💥 Golpe certeiro! 57 kg · RPE 8
+✅ Quest completa: Golem de Ferro derrotado! +10 EXP
+```
+
+A EXP da quest e 10 x aderencia do RPE (`_format_quest_result`). Em seguida
+aparece a proxima quest. O resumo final
 (`🏁 TREINO CONCLUÍDO`, com `⭐ Recordes: ...`) mostra inicio, fim, duracao e os
 indicadores da sessao, e restaura o teclado inicial. Horarios ausentes em sessoes antigas sao omitidos.
 
-`/status` recupera os botoes; `/ajuda` exibe o teclado inicial quando nao ha
+`/status` ("⚔ Batalha em andamento — i/n quests completas") recupera a quest atual com os botoes; `/ajuda` exibe o teclado inicial quando nao ha
 sessao. Entradas numericas permanecem disponiveis para ajustar a carga real
 ou registrar um exercicio que ainda nao tem alvo. "⚔ Iniciar treino" e
 "🍖 Ver dieta" sao as unicas excecoes de texto sem barra, por serem os rotulos
@@ -185,8 +210,9 @@ handle_generate()
   -> load_session() (retoma se houver treino ativo)
   -> ods_ops.generate_training()
   -> ods_ops.write_session(exercises, session_id)
-  -> send(data/hora de inicio, remove_keyboard)
-  -> send_current_exercise(primeiro exercicio com botoes RPE)
+  -> send("⚔ BATALHA INICIADA!" com plano, dia, data/hora e quests, remove_keyboard)
+  -> send_image("render_encontro", inimigos, plano)
+  -> send_current_exercise(primeira quest, exercises) com botoes de golpe
 ```
 
 O `/gerar` usa o plano ativo. Os planos `A` a `E` (segunda a sexta, cerca de
@@ -195,7 +221,7 @@ ultimo exercicio de uma sessao do plano ativo, o proximo da sequencia A, B, C,
 D, E passa a ser o ativo, e depois do `E` volta o `A`. O plano `A` comeca por
 `Supino reto (barra)` (`3x12`). O plano `Forca` (antigo `A`) nao alterna.
 
-O texto enviado mostra apenas o exercicio atual com a carga de cada serie,
+O card mostra apenas a quest atual com a carga de cada golpe (serie),
 repeticoes e descanso. A lista completa continua disponivel em `/prever`.
 Quando existe carga anterior para o exercicio, o alvo da serie de topo e
 calculado pela ultima carga registrada e pelo RPE:
@@ -217,8 +243,8 @@ Uma sequencia de RPE 9 so deve ser tratada como sinal de atencao quando houver
 perda tecnica, repeticoes incompletas, piora de amplitude ou ausencia prolongada
 de melhora na execucao.
 
-Exemplo: se o treino anterior registrou `40 8`, o proximo `/gerar` mostra
-`alvo: 42kg`. Se registrou `40 10`, o proximo `/gerar` mostra `alvo: 36kg`.
+Exemplo: se o treino anterior registrou `40 8`, o proximo `/gerar` usa alvo de
+42 kg no golpe final. Se registrou `40 10`, usa 36 kg.
 
 Se as reps do ultimo log diferem das reps do plano atual, o alvo e convertido
 pelo 1RM estimado (Epley: `1RM = peso x (1 + reps/30)`) e arredondado para
@@ -238,8 +264,8 @@ As series seguem uma piramide crescente de 80% -> 90% -> 100% do alvo
 anilhas de 2 kg. A carga gravada no log e a da serie de topo.
 
 A `Elevação lateral` usa duas barras ocas de 40 cm, uma em cada mao. A carga e
-por mao, com alvo inicial de 2 kg, e a mensagem mostra `anilhas por mão` em cada
-serie, `Barra: 40 cm · 0 kg (uma em cada mão)` e `Total por mão`. A remada
+por mao, com alvo inicial de 2 kg, e o card mostra `de anilhas por mão` e
+`(total Y kg por mão)` em cada golpe e `🏋 Barra 40 cm · 0 kg (uma em cada mão)`. A remada
 apoiada no banco (alvo inicial 12 kg por mao) e o crucifixo invertido apoiado
 (2 kg por mao), da sexta, usam o mesmo formato e aparecem sem o sufixo
 `(barras 40 cm)`.
@@ -249,10 +275,12 @@ tem alvo inicial de 41 kg quando ainda nao houver historico proprio. Depois do
 primeiro registro, seguem a progressao normal por RPE.
 
 O descanso sugerido tambem vai em `session.json` como `rest_interval` e aparece
-no `/status` e na indicacao do proximo exercicio.
+no card de cada quest (`⏳ Descanso entre golpes`).
 
-Quando o exercicio atual ou o proximo exercicio tiver equipamento de peso fixo,
-o bot tambem mostra a montagem da carga. Nos supinos com barra, `Agachamento com barra nas costas`,
+Quando o exercicio tiver equipamento de peso fixo, o card da quest mostra as
+anilhas e o total de cada golpe e a linha `🏋 Barra ...`. A observacao de
+montagem (`loading_note`, de `ods_ops.format_loading_note()`) fica em
+`session.json` e usa o formato abaixo. Nos supinos com barra, `Agachamento com barra nas costas`,
 `Agachamento sumô com barra à frente`, `Remada curvada (barra)`,
 `Desenvolvimento (barra em pé)`, `Levantamento Terra Romeno` e `Remada curvada
 alta no peito (barra)`, a barra reta de 2,20 m pesa 11 kg. Um alvo de 40 kg
@@ -404,9 +432,9 @@ O comando:
 
 Carrega `session.json`, conta quantos logs tem carga e informa:
 
-- progresso atual
+- progresso atual ("⚔ Batalha em andamento — i/n quests completas")
 - exercicios ja feitos
-- proximo exercicio
+- a quest atual, reenviada com imagem, card e botoes de golpe
 - treino completo quando todos os logs estao preenchidos
 
 ## `/desfazer`

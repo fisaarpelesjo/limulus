@@ -149,6 +149,56 @@ CONQUISTAS = (
 )
 
 DIAS_SEMANA = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
+DIAS_SEMANA_LONGOS = (
+    "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo",
+)
+
+# Cada exercicio do treino e uma quest contra um inimigo, escolhido pelo
+# primeiro grupo muscular principal do exercicio.
+INIMIGOS_POR_GRUPO = {
+    "Peitoral": "Golem de Ferro",
+    "Quadriceps": "Ogro da Montanha",
+    "Adutores": "Ogro da Montanha",
+    "Posteriores": "Serpente do Abismo",
+    "Gluteos": "Serpente do Abismo",
+    "Dorsais": "Grifo Sombrio",
+    "Trapezio": "Grifo Sombrio",
+    "Deltoide anterior": "Titã do Céu",
+    "Deltoide lateral": "Titã do Céu",
+    "Deltoide posterior": "Titã do Céu",
+    "Triceps": "Diabrete Rúnico",
+    "Biceps": "Morcego de Ferro",
+    "Antebraco": "Morcego de Ferro",
+}
+INIMIGO_PADRAO = "Cogumelo Bravo"
+
+# Botoes de RPE como golpes: (rotulo, valor gravado, nome do golpe).
+GOLPES_RPE = (
+    ("🛡 Leve · RPE ≤7", 7, "Golpe leve"),
+    ("⚔ Certeiro · RPE 8", 8, "Golpe certeiro"),
+    ("🔥 Crítico · RPE 9", 9, "Golpe crítico"),
+    ("💀 No limite · RPE 10", 10, "Golpe no limite"),
+)
+
+
+def inimigo_do_exercicio(grupos):
+    """Recebe a lista de grupos do exercicio [{muscle_group, role}] e devolve o inimigo."""
+    principais = [g["muscle_group"] for g in grupos if g.get("role") == "principal"]
+    for grupo in principais + [g["muscle_group"] for g in grupos]:
+        if grupo in INIMIGOS_POR_GRUPO:
+            return INIMIGOS_POR_GRUPO[grupo]
+    return INIMIGO_PADRAO
+
+
+def nome_do_golpe(rpe):
+    rpe = int(rpe)
+    if rpe <= 7:
+        return GOLPES_RPE[0][2]
+    if rpe == 8:
+        return GOLPES_RPE[1][2]
+    if rpe == 9:
+        return GOLPES_RPE[2][2]
+    return GOLPES_RPE[3][2]
 
 ABERTURAS = (
     "o herói encarou",

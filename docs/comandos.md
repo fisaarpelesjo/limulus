@@ -8,7 +8,7 @@ Todos os comandos textuais devem ser enviados com `/`.
 
 | Comando | Finalidade |
 | --- | --- |
-| `/gerar` ou botão `⚔ Iniciar treino` | Inicia ou retoma a sessao, mostrando o exercicio atual com botoes de RPE. |
+| `/gerar` ou botão `⚔ Iniciar treino` | Inicia ("⚔ BATALHA INICIADA!") ou retoma a sessao; cada exercicio e uma quest contra um inimigo, enviada como imagem de batalha com o card na legenda e quatro botoes de golpe (`🛡 Leve · RPE ≤7`, `⚔ Certeiro · RPE 8`, `🔥 Crítico · RPE 9`, `💀 No limite · RPE 10`). |
 | `/prever` | Mostra o proximo treino sem salvar sessao ou logs. |
 | `/treinob` | Mostra o Treino B de garagem com pesos calculados pelo historico de Terra Romeno e Remada curvada. |
 | `/exercicios` | Lista os exercicios do plano ativo. |

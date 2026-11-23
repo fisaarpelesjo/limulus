@@ -360,8 +360,8 @@ ods_ops.generate_training()
 atualizar quando o usuario envia carga. Ele tambem guarda `target_weight`, que
 e a carga alvo calculada para a sessao atual, e `rest_interval`, que e o
 descanso sugerido entre series. Quando o exercicio usa equipamento de peso fixo,
-tambem pode guardar `loading_note`, uma observacao de montagem da carga para o
-bot mostrar no exercicio atual/proximo.
+tambem pode guardar `loading_note`, uma observacao de montagem da carga; o card
+da quest mostra a montagem por golpe e a barra a partir de `LOAD_EQUIPMENT`.
 
 O SQLite tambem permite recuperar esse contexto. A consulta procura a sessao
 mais recente que possui logs e pelo menos um `weight IS NULL`, preserva a ordem

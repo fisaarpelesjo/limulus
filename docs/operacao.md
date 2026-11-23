@@ -7,10 +7,11 @@ Este documento explica como rodar, manter e depurar a Limulus.
 1. Inicie o bot.
 2. Abra o Telegram.
 3. Envie `/gerar`.
-4. Siga a carga de cada serie (piramide 80% -> 90% -> 100% do alvo) e use
-   `descanso` como intervalo entre series.
-5. Ao terminar cada exercicio, toque no RPE da ultima serie (a de topo) ou
-   envie a carga total dela.
+4. Cada exercicio chega como uma quest: siga a carga de cada golpe (piramide
+   80% -> 90% -> 100% do alvo) e use o descanso entre golpes.
+5. Depois do golpe final (a serie de topo), toque no botao de golpe com o RPE
+   dela (`🛡 Leve · RPE ≤7`, `⚔ Certeiro · RPE 8`, `🔥 Crítico · RPE 9` ou
+   `💀 No limite · RPE 10`) ou envie a carga total dela.
 6. Use `/status` para ver progresso.
 7. Use `/desfazer` se registrou algo errado.
 8. Pare o bot com `Ctrl+C`.

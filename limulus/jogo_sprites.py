@@ -547,11 +547,124 @@ CHEFES = {
 
 
 def sprite_do_chefe(nome):
-    """Retorna (linhas, paleta) do chefe; nome desconhecido usa o golem."""
-    linhas, cores = CHEFES.get(nome, CHEFES["Golem de Ferro"])
+    """Retorna (linhas, paleta) do chefe; nome desconhecido usa o golem.
+
+    Tambem aceita o nome de um inimigo menor (ver INIMIGOS_MENORES).
+    """
+    linhas, cores = CHEFES.get(nome) or INIMIGOS_MENORES.get(nome) or CHEFES["Golem de Ferro"]
     paleta = dict(_PALETA_CHEFE)
     paleta.update(cores)
     return linhas, paleta
+
+
+# --------------------------------------------------------------------------
+# Inimigos menores (24 x 24, espelhados), usados nos encontros do treino
+# --------------------------------------------------------------------------
+
+_DIABRETE = _espelhar([
+    "............",
+    "............",
+    "............",
+    "....K.......",
+    "....KHK.....",
+    ".....KHK....",
+    ".....KHKKKKK",
+    "......KRRRRR",
+    ".....KRRRRRR",
+    ".....KRREERR",
+    ".....KRRRRRR",
+    "......KRrKKK",
+    "..K....KRRRR",
+    ".KrK..KRRURR",
+    ".KrrKKRRRUUR",
+    "..KrrKRRRRUR",
+    "...KKRRrRRRR",
+    ".....KRRRRRR",
+    "......KRRrRR",
+    "......KRRK..",
+    "......KRRK..",
+    ".....KHHHK..",
+    ".....KKKKK..",
+    "............",
+])
+
+_MORCEGO = _espelhar([
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+    "........K...",
+    "........KK..",
+    "........KLKK",
+    ".KK.....KGGG",
+    "KLLKK...KGEG",
+    "KLGGLKK.KGGG",
+    "KGGRGGLKKGTG",
+    "KGgGGGGGLKGG",
+    "KGggGGGRGGLG",
+    "KgK.KgGGGGGG",
+    "KK...KgKgGGG",
+    "......K.KgGG",
+    "........KKgG",
+    ".........KKK",
+    "............",
+    "............",
+    "............",
+    "............",
+    "............",
+])
+
+_COGUMELO = _espelhar([
+    "............",
+    "............",
+    "............",
+    "........KKKK",
+    "......KKRRRR",
+    ".....KRRWWRR",
+    "....KRRWWWRR",
+    "...KRRRRWRRR",
+    "..KRWWRRRRRR",
+    "..KWWWRRRRWW",
+    ".KRWWRRRRRWW",
+    ".KrRRRRRRRRR",
+    ".KKKKKKKKKKK",
+    "....KSKSSSSS",
+    "....KSSKKSSS",
+    "....KSSSESSS",
+    "....KSSSESSS",
+    "....KsSSSKKK",
+    "....KsSSKSSS",
+    "....KssSSSSS",
+    "...KBBKsSSSS",
+    "...KKKKKKKKK",
+    "............",
+    "............",
+])
+
+INIMIGOS_MENORES = {
+    "Diabrete Rúnico": (
+        _DIABRETE,
+        {"R": (200, 56, 64), "r": (120, 28, 44), "H": (240, 230, 200), "E": (255, 230, 60), "U": (90, 250, 255)},
+    ),
+    "Morcego de Ferro": (
+        _MORCEGO,
+        {"L": (214, 222, 236), "G": (132, 142, 164), "g": (78, 86, 106), "E": (255, 60, 50), "T": (255, 255, 255), "R": (176, 96, 52)},
+    ),
+    "Cogumelo Bravo": (
+        _COGUMELO,
+        {"R": (220, 50, 50), "r": (150, 26, 36), "W": (252, 248, 236), "S": (244, 226, 190), "s": (200, 172, 130), "E": (30, 20, 30), "B": (120, 80, 50)},
+    ),
+}
+
+INIMIGO_PADRAO = "Cogumelo Bravo"
+
+
+def sprite_do_inimigo(nome):
+    """Sprite de qualquer inimigo (chefe ou menor); desconhecido vira cogumelo."""
+    if nome not in CHEFES and nome not in INIMIGOS_MENORES:
+        nome = INIMIGO_PADRAO
+    return sprite_do_chefe(nome)
 
 
 # --------------------------------------------------------------------------

@@ -45,16 +45,16 @@ def main():
             bot.handle_generate()
             assert len(messages) == 2
             assert messages[0][1]['reply_markup']['remove_keyboard']
-            assert 'Horário:' in messages[0][0] and 'Brasília' in messages[0][0]
+            assert 'BATALHA INICIADA!' in messages[0][0] and 'quests</b> pela frente' in messages[0][0]
             assert 'Treino de hoje' not in messages[0][0]
             text, kwargs = messages[-1]
-            assert '<b>SUPINO RETO</b>\n\n' in text
-            assert '1ª série: <b>54 kg</b> anilhas\n2ª série: <b>62 kg</b> anilhas\n3ª série: <b>71 kg</b> anilhas' in text
-            assert 'Repetições: <b>12</b>' in text
-            assert '<i>Barra: 2,20 m · 11 kg</i>' in text
-            assert '<i>Total com barra: 65 · 73 · 82 kg</i>' in text
-            keyboard = kwargs['reply_markup']['inline_keyboard'][0]
-            assert [item['text'] for item in keyboard] == ['RPE ≤7', 'RPE 8', 'RPE 9', 'RPE ≥10']
+            assert 'QUEST 1/' in text and 'SUPINO RETO</b>\n👹 Derrote o <b>Golem de Ferro</b>!' in text
+            assert '⚔ Golpe 1 · <b>54 kg</b> de anilhas <i>(total 65 kg)</i>\n⚔ Golpe 2 · <b>62 kg</b> de anilhas <i>(total 73 kg)</i>\n🎯 Golpe final · <b>71 kg</b> de anilhas <i>(total 82 kg)</i>' in text
+            assert '📜 Objetivo: <b>3 golpes de 12 repetições</b>' in text and 'QUEST 1/' in text and '👹 Derrote o' in text
+            assert '🏋 Barra 2,20 m · 11 kg' in text
+            assert 'Depois do golpe final, como foi?' in text
+            keyboard = [botao for linha in kwargs['reply_markup']['inline_keyboard'] for botao in linha]
+            assert [item['text'] for item in keyboard] == [rotulo for rotulo, _, _ in bot.jogo.GOLPES_RPE]
             session = json.loads(bot.SESSION_FILE.read_text(encoding='utf-8'))
             ids = [ex['log_id'] for ex in session['exercises']]
             initial_id = session['session_id']
