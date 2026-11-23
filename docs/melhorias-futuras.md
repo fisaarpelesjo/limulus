@@ -541,6 +541,10 @@ acesso (o bot hoje se protege pelo chat) e se havera notificacoes push.
 
 ### 2026-11-23
 
+- revisao final das mensagens: `/pausa` virou a estalagem do heroi, loja do
+  mercador, aquecimento com acentos, Treino B com carga e peso do corpo, portal
+  do heroi no `/app`; `/peso abc` e `/cintura xyz` nao mostram mais o erro do
+  Python em ingles; formatadores antigos sem uso removidos
 - bestiario ampliado para 48 bases (6 por familia, 24 sprites novos) em 4
   tiers por troca de paleta programatica (`paleta_do_tier`: Elite carmesim,
   Ancestral violeta, Lendário dourado com aura), 192 inimigos; o tier sai

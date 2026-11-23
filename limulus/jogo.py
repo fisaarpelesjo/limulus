@@ -51,7 +51,7 @@ LOJA = {
     "coringa": {
         "nome": "Coringa extra",
         "preco": 150,
-        "descricao": "Protege a sequencia numa semana incompleta, depois dos 2 do mes.",
+        "descricao": "Protege a sequência numa semana incompleta, depois dos 2 coringas do mês.",
     },
 }
 
@@ -969,7 +969,7 @@ def comprar(item, hoje=None):
     """Compra um item da loja. Retorna (ok, mensagem)."""
     produto = LOJA.get(item)
     if produto is None:
-        return False, "Item não existe na loja."
+        return False, "O mercador não tem esse item. Veja o que há em /loja."
     estado = estado_atual(hoje=hoje)
     if estado["ouro"] < produto["preco"]:
         return False, (
@@ -988,7 +988,7 @@ def comprar(item, hoje=None):
             )
     finally:
         conn.close()
-    return True, f"{produto['nome']} comprado por {produto['preco']} de ouro."
+    return True, f"O mercador entregou: <b>{produto['nome']}</b> (−{produto['preco']} de ouro)."
 
 
 def iniciar_pausa(dias, motivo=None, hoje=None):
@@ -1279,14 +1279,14 @@ def formatar_missoes(estado):
 
 def formatar_diario(estado, limite=10):
     if not estado["diario"]:
-        return "📖 <b>DIÁRIO DE AVENTURA</b>\n\nNenhuma página ainda. Conclua um treino."
+        return "📖 <b>DIÁRIO DE AVENTURA</b>\n\nNenhuma página ainda. Vença uma batalha para escrever a primeira."
     linhas = ["📖 <b>DIÁRIO DE AVENTURA</b>", ""]
     linhas.extend(d["texto"] for d in reversed(estado["diario"][-limite:]))
     return "\n".join(linhas)
 
 
 def formatar_loja(estado):
-    linhas = ["🏪 <b>LOJA</b>", f"Seu ouro: 🪙 <b>{estado['ouro']}</b>", ""]
+    linhas = ["🏪 <b>LOJA DO MERCADOR</b>", f"Seu ouro: 🪙 <b>{estado['ouro']}</b>", ""]
     for chave, item in LOJA.items():
         linhas.append(f"<b>{item['nome']}</b> — 🪙 {item['preco']}")
         linhas.append(f"{item['descricao']}")

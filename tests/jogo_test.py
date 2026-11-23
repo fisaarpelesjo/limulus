@@ -457,11 +457,19 @@ def _assert_fluxo_telegram():
             telegram_poller.handle_pause("/pausa abc")
             assert "Use" in mensagens[-1][0]
             telegram_poller.handle_pause("/pausa 5")
-            assert "Pausa registrada" in mensagens[-1][0]
+            assert "descansa na estalagem" in mensagens[-1][0]
             telegram_poller.handle_pause("/pausa fim")
-            assert "encerrada" in mensagens[-1][0]
+            assert "deixou a estalagem" in mensagens[-1][0]
             telegram_poller.handle_pause("/pausa fim")
-            assert "Nenhuma pausa" in mensagens[-1][0]
+            assert "nenhuma pausa ativa" in mensagens[-1][0]
+
+            # Valor que nao e numero nao vaza erro do Python em ingles.
+            telegram_poller.handle_weight("/peso abc")
+            assert "Não entendi o peso" in mensagens[-1][0] and "could not" not in mensagens[-1][0]
+            telegram_poller.handle_waist("/cintura xyz")
+            assert "Não entendi a medida" in mensagens[-1][0]
+            telegram_poller.handle_weight("/peso 10")
+            assert "entre 30 e 400 kg" in mensagens[-1][0]
 
             # Quest enviada como tela de batalha com o card na legenda.
             api = _ApiFalsa()

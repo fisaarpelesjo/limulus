@@ -173,13 +173,6 @@ def _format_weight_date(recorded_at):
     return datetime.fromisoformat(recorded_at).strftime("%d/%m/%Y %H:%M")
 
 
-def _format_target_suffix(ex):
-    target_weight = ex.get("target_weight")
-    if target_weight is None:
-        return ""
-    return f" - alvo {_format_weight(target_weight)}kg"
-
-
 def _display_exercise_name(name):
     return ods_ops.get_display_name(name)
 
@@ -295,9 +288,9 @@ def _format_training_b_msg(exercises):
     for idx, ex in enumerate(exercises, start=1):
         target = ex.get("target_weight")
         weight_line = (
-            "peso corporal"
+            "🦸 peso do próprio corpo"
             if target is None
-            else f"peso: {_format_weight(target)}kg"
+            else f"🏋 carga {_format_weight(target)} kg"
         )
         lines.append(
             f"⚔ {idx}. <b>{escape(ex['name'])}</b>\n"
@@ -312,43 +305,6 @@ def _format_summary_names(items, limit=4):
     names = [_display_exercise_name(item["name"]) for item in items[:limit]]
     suffix = f" e mais {len(items) - limit}" if len(items) > limit else ""
     return ", ".join(names) + suffix
-
-
-def _format_training_summary(session_id):
-    summary = db_ops.get_session_summary(session_id)
-    if summary is None:
-        return "Resumo indisponivel."
-
-    lines = [
-        f"Volume total: <b>{summary['volume']:,.0f} kg</b>".replace(",", "."),
-    ]
-    if summary["rpe_average"] is not None:
-        lines.append(f"RPE médio: <b>{summary['rpe_average']:.1f}</b>".replace(".", ","))
-    if summary["volume_delta"] is not None:
-        delta = summary["volume_delta"]
-        signal = "+" if delta > 0 else ""
-        lines.append("\n<b>Comparação com o treino anterior</b>")
-        lines.append(
-            f"Volume vs. sessao anterior: <b>{signal}{delta:,.0f} kg</b>".replace(
-                ",", "."
-            )
-        )
-    if summary["increases"]:
-        lines.append(f"Aumentos de carga: {len(summary['increases'])} exercícios — {_format_summary_names(summary['increases'])}")
-    if summary["reductions"]:
-        lines.append(f"Reducoes: {_format_summary_names(summary['reductions'])}")
-    if summary["consolidations"]:
-        lines.append(
-            f"Consolidacoes: {_format_summary_names(summary['consolidations'])}"
-        )
-    if summary["maintained_rpe9"]:
-        lines.append(
-            f"Cargas mantidas em RPE 9: "
-            f"{_format_summary_names(summary['maintained_rpe9'])}"
-        )
-    if summary["records"]:
-        lines.append(f"⭐ Recordes: {len(summary['records'])} — {_format_summary_names(summary['records'])}")
-    return "\n".join(lines)
 
 
 def _format_exercises_msg(exercises):
@@ -778,7 +734,7 @@ def handle_week():
     send(
         "🗺 <b>MAPA DA SEMANA</b>\n\n"
         f"{jogo.formatar_semana(estado)}\n"
-        f"Treinos: <b>{estado['treinos_semana_atual']}/{jogo.TREINOS_POR_SEMANA}</b>"
+        f"Batalhas vencidas: <b>{estado['treinos_semana_atual']}/{jogo.TREINOS_POR_SEMANA}</b>"
         f" · Sequência: <b>{estado['sequencia']}</b> sem.\n\n"
         + jogo.formatar_missoes(estado)
     )
@@ -787,7 +743,7 @@ def handle_week():
 def handle_app():
     estado = jogo.estado_atual()
     send(
-        "🎮 <b>Ficha completa no app</b>\nToque no botão para abrir dentro do Telegram.",
+        "🎮 <b>PORTAL DO HERÓI</b>\nToque no botão para abrir a ficha completa (app) aqui dentro do Telegram.",
         reply_markup={"inline_keyboard": [[{"text": "🎮 Abrir ficha", "web_app": {"url": _link_app(estado)}}]]},
     )
 
@@ -796,7 +752,7 @@ def handle_shop(text):
     partes = text.strip().split(maxsplit=1)
     if len(partes) == 2:
         ok, mensagem = jogo.comprar(partes[1].strip().lower())
-        send(("🪙 " if ok else "⚠ ") + mensagem)
+        send(("🏪 " if ok else "⚠ ") + mensagem)
         if ok:
             atualizar_hud()
         return
@@ -808,14 +764,14 @@ def handle_pause(text):
     argumento = partes[1].strip().lower() if len(partes) == 2 else ""
     if argumento == "fim":
         if jogo.encerrar_pausa():
-            send("▶ Pausa encerrada. Bem-vindo de volta à aventura!")
+            send("▶ O herói deixou a estalagem. Bem-vindo de volta à aventura!")
             atualizar_hud()
         else:
-            send("Nenhuma pausa ativa.")
+            send("🛏 Você não está na estalagem: nenhuma pausa ativa.")
         return
     if not argumento:
         send(
-            "⏸ <b>Pausa</b>\nUse <code>/pausa 7</code> para pausar 7 dias "
+            "🛏 <b>ESTALAGEM</b> (pausa)\nUse <code>/pausa 7</code> para o herói descansar 7 dias "
             f"(até {jogo.PAUSA_MAXIMA_DIAS}) por lesão, doença ou viagem, e "
             "<code>/pausa fim</code> para voltar. Semanas em pausa não gastam "
             "coringa nem quebram a sequência."
@@ -824,10 +780,10 @@ def handle_pause(text):
     try:
         dias = int(argumento)
     except ValueError:
-        send("Use <code>/pausa 7</code> ou <code>/pausa fim</code>.")
+        send("⚠ Não entendi quantos dias. Use <code>/pausa 7</code> ou <code>/pausa fim</code>.")
         return
     fim = jogo.iniciar_pausa(dias)
-    send(f"⏸ Pausa registrada até <b>{fim:%d/%m/%Y}</b>. A sequência fica protegida.")
+    send(f"🛏 O herói descansa na estalagem até <b>{fim:%d/%m/%Y}</b>. A sequência fica protegida.")
     atualizar_hud()
 
 
@@ -1140,6 +1096,10 @@ def handle_weight(text):
     if len(parts) == 2:
         try:
             weight = float(parts[1].strip().replace(",", "."))
+        except ValueError:
+            send("⚠ Não entendi o peso. Use um número, por exemplo <code>/peso 118,5</code>.")
+            return
+        try:
             entry = db_ops.add_body_weight(weight)
         except ValueError as exc:
             send(f"⚠ {exc}\nUse <code>/peso 118,5</code>.")
@@ -1182,6 +1142,10 @@ def handle_waist(text):
     if len(parts) == 2:
         try:
             circumference = float(parts[1].strip().replace(",", "."))
+        except ValueError:
+            send("⚠ Não entendi a medida. Use um número, por exemplo <code>/cintura 110,5</code>.")
+            return
+        try:
             entry = db_ops.add_waist_measurement(circumference)
         except ValueError as exc:
             send(f"⚠ {exc}\nUse <code>/cintura 110,5</code>.")
@@ -1434,13 +1398,13 @@ def main():
                     send(
                         "🔥 <b>RITUAL DE AQUECIMENTO</b> · 5 min\n\n"
                         "Prepare o herói sem gastar energia da batalha:\n\n"
-                        "1. Marcha rapida ou polichinelo leve — 60s\n"
-                        "2. Circulos de braco e abrir/fechar bracos — 30s\n"
-                        "3. Rotacao de tronco — 30s\n"
+                        "1. Marcha rápida ou polichinelo leve — 60 s\n"
+                        "2. Círculos de braço e abrir/fechar braços — 30 s\n"
+                        "3. Rotação de tronco — 30 s\n"
                         "4. Agachamento livre — 1x10\n"
-                        "5. Afundo alternado ou passada para tras — 1x6 por perna\n"
+                        "5. Afundo alternado ou passada para trás — 1x6 por perna\n"
                         "6. Bom dia sem peso ou com barra vazia — 1x10\n"
-                        "7. Flexao facil — 1x5-8\n"
+                        "7. Flexão fácil — 1x5-8\n"
                         "8. Prancha com toque no ombro — 10 toques"
                     )
                     continue

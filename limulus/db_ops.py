@@ -689,7 +689,7 @@ def get_latest_body_weight():
 def add_waist_measurement(circumference_cm, source="telegram", recorded_at=None):
     circumference = float(circumference_cm)
     if not 40 <= circumference <= 250:
-        raise ValueError("A circunferencia deve ficar entre 40 e 250 cm.")
+        raise ValueError("A circunferência deve ficar entre 40 e 250 cm.")
 
     timestamp = recorded_at or datetime.now().isoformat(
         sep=" ",

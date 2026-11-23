@@ -318,7 +318,7 @@ def main():
             assert "10 rodadas · ⏳ 60 s de descanso" in mensagens[-1]
             assert "Treino B - garagem" not in mensagens[-1]
             assert "Farmer walk ida e volta" in mensagens[-1]
-            assert "peso: 34kg" in mensagens[-1]
+            assert "carga 34 kg" in mensagens[-1]
             assert "2 barras de 40 cm + 17kg por mao" in mensagens[-1]
 
             legacy_db = temp_path / "legado.db"
