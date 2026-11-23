@@ -208,50 +208,12 @@ barra.
 /cintura        Consulta cintura atual, variacao e ultimas medicoes
 /status         Mostra exercicio atual e progresso
 /desfazer       Remove carga e RPE do ultimo exercicio preenchido
+/perfil         Mostra nivel, EXP, sequencia semanal e coringas
 /ajuda          Mostra ajuda principal
 80              Registra 80 kg no proximo exercicio pendente
 80 8            Registra 80 kg com RPE 8
 80,5 8          Aceita virgula decimal e salva 80.5 kg
 ```
-
-### Muay Thai (saco)
-
-Antes do ciclo de 8 semanas existe uma fase de fundamentos (`/fundamentos`):
-tres sessoes que ensinam o mecanismo de cada golpe, sempre a no maximo 20-30%
-de potencia. Bandagem e luva entram logo na preparacao, e a sessao vai direto
-ao saco em rounds — um golpe por vez nos primeiros, combinacao livre nos
-ultimos. Nao pressupoe espelho nem camera: o feedback vem do som do golpe, de
-como o saco reage e da dor no punho quando o alinhamento sai errado. O unico
-bloco isolado, sem saco, e o giro do pe de apoio em Fundamentos C: chute baixo
-sem esse giro machuca o joelho na primeira sessao.
-
-Ciclo de 8 semanas para iniciante, treinando saco em terca, quinta e sabado,
-complementando a musculacao de segunda, quarta e sexta. Quinta e leve de
-proposito, para nao prejudicar a sexta. Nada e gravado no banco: o modelo de
-treino existente e serie x repeticao x carga, e Muay Thai e round x tempo x
-percentual de potencia — encaixar um no outro faria o volume do dashboard
-mentir.
-
-```
-/fundamentos    Fase pre-ciclo: bandagem, luva e direto pro saco em rounds
-/fundamentos a  Sessao de fundamentos (a, b ou c)
-/mt             Roteiro de hoje (ter/qui/sab); nos outros dias avisa e nao inicia
-/mtterca        Forca o roteiro de terca (idem /mtquinta e /mtsabado)
-/mtterca 3      Mesma coisa, na semana 3 da progressao
-/proximo        Avanca um bloco do roteiro; no ultimo, encerra
-/mtparar        Encerra o roteiro em andamento
-/mtregras       Regras de seguranca do ciclo
-/tecnicas       Indice da biblioteca de execucao
-/como jab       O essencial: 2-3 pistas e os 2 piores erros
-/como jab tudo  Passo a passo completo, com rotacao e checagem
-/como chute baixo   A busca aceita acento, espaco, alias e numeracao (1, 2, 3)
-```
-
-Cada bloco termina com os atalhos `/como` das tecnicas que ele usa, em vez de
-embutir o passo a passo inteiro — o Telegram corta mensagem em 4096 caracteres.
-O estado do roteiro vive em `mt_session.json`, arquivo separado de
-`session.json`, para que uma sessao de musculacao ativa e um roteiro de Muay
-Thai em andamento nao se atropelem.
 
 O polling registra logs operacionais com horario, nivel, comando e `session_id`.
 Token e URL completa da API nao devem aparecer nos logs. Falhas temporarias usam
@@ -276,17 +238,25 @@ mensagens cosmeticas.
 9. Escreve `session.json` com `date`, `session_id` e exercicios.
 10. Envia data/hora de inicio em Brasilia e o primeiro exercicio, sem lista.
 
-O botao "Gerar treino" inicia o mesmo fluxo e desaparece enquanto ha treino
+O botao "⚔ Iniciar treino" inicia o mesmo fluxo e desaparece enquanto ha treino
 ativo. Se ja existe sessao em andamento, o bot retoma o exercicio pendente.
 Toque em RPE ≤7, 8, 9 ou ≥10 para registrar a carga total indicada e avancar.
 Os extremos sao armazenados como 7 e 10; nao ha botao sem RPE. A confirmacao
-substitui os botoes do exercicio concluido. No fim, o resumo inclui horarios,
-duracao, volume e comparacoes, e o teclado "Gerar treino" reaparece.
+(`✓ 57 kg · RPE 8 · +10 EXP`) substitui os botoes do exercicio concluido. No
+fim, o resumo (`🏁 TREINO CONCLUÍDO`) inclui horarios, duracao, volume e
+comparacoes, e o teclado "⚔ Iniciar treino" / "🍖 Ver dieta" reaparece.
+Comando invalido sem sessao ativa tambem devolve esse teclado, o que troca um
+teclado antigo que tenha ficado no celular.
 Use `/ajuda` sem sessao ativa para exibir esse teclado ou `/status` para
 recuperar os botoes do exercicio atual. Sem carga alvo, informe a primeira
 carga manualmente; entradas numericas continuam disponiveis.
 
+As mensagens usam um tom JRPG leve: a sessao comeca com "⚔ Nova batalha!", o
+`/status` mostra "⚔ Batalha em andamento — X/Y" e o `/desfazer` responde
+"↩ Turno desfeito: NOME".
+
 O exercicio atual separa nome, instrucoes e equipamento com linhas em branco.
+O nome aparece em caixa alta com o prefixo `⚔`.
 O body mostra uma linha por serie da piramide crescente (`1ª série: 50 kg
 anilhas`, ou `carga` sem equipamento fixo), depois repeticoes e descanso, com
 valores em destaque. O footer em italico mostra a barra, o total por serie

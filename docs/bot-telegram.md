@@ -10,15 +10,17 @@ Ele usa long polling pela API HTTP do Telegram. Nao ha webhook nem servidor web.
 
 ## Fluxo Por Botoes
 
-O teclado "Gerar treino" inicia ou retoma a sessao e desaparece enquanto ela
-esta ativa. Uma mensagem informa data/hora de Brasilia, seguida do exercicio
-atual, sem lista completa. O header e o nome em caixa alta; o body mostra uma
+O teclado "⚔ Iniciar treino" inicia ou retoma a sessao e desaparece enquanto ela
+esta ativa. Uma mensagem "⚔ Nova batalha!" informa data/hora de Brasilia,
+seguida do exercicio atual, sem lista completa; na retomada o aviso e
+"⚔ Treino em andamento...". O header e o nome em caixa alta com o prefixo `⚔`
+(tom JRPG leve); o body mostra uma
 linha por serie da piramide crescente, depois repeticoes e descanso, com
 valores em negrito; o footer usa italico para barra, total com barra por serie
 e `RPE da última série`. Exemplo com alvo de 82 kg na barra de 11 kg:
 
 ```text
-SUPINO RETO
+⚔ SUPINO RETO
 
 1ª série: 54 kg anilhas
 2ª série: 62 kg anilhas
@@ -36,15 +38,19 @@ unica de anilhas nem linha de series; `Séries: N` so aparece quando ainda nao
 ha alvo, junto do pedido da primeira carga.
 
 Os quatro botoes RPE ≤7, 8, 9 e ≥10 registram a carga de topo exibida (os
-extremos sao armazenados como 7 e 10); o RPE se refere a ultima serie. Nao ha botao sem RPE. A mensagem anterior recebe
-confirmacao e perde os botoes; em seguida aparece o proximo exercicio.
-O resumo final mostra inicio, fim, duracao e os indicadores da sessao, e
-restaura o teclado inicial. Horarios ausentes em sessoes antigas sao omitidos.
+extremos sao armazenados como 7 e 10); o RPE se refere a ultima serie. Nao ha botao sem RPE. O clique mostra
+o aviso "Golpe registrado! ⚔", a mensagem anterior recebe a confirmacao
+`✓ 57 kg · RPE 8 · +10 EXP` (EXP da serie = 10 x aderencia do RPE) e perde os
+botoes; em seguida aparece o proximo exercicio. O resumo final
+(`🏁 TREINO CONCLUÍDO`, com `⭐ Recordes: ...`) mostra inicio, fim, duracao e os
+indicadores da sessao, e restaura o teclado inicial. Horarios ausentes em sessoes antigas sao omitidos.
 
 `/status` recupera os botoes; `/ajuda` exibe o teclado inicial quando nao ha
 sessao. Entradas numericas permanecem disponiveis para ajustar a carga real
-ou registrar um exercicio que ainda nao tem alvo. "Gerar treino" e a unica
-excecao de texto sem barra, por ser o rotulo do teclado.
+ou registrar um exercicio que ainda nao tem alvo. "⚔ Iniciar treino" e
+"🍖 Ver dieta" sao as unicas excecoes de texto sem barra, por serem os rotulos
+do teclado. Comando invalido sem sessao ativa responde com o teclado inicial,
+para substituir um teclado antigo que tenha ficado no celular.
 
 `training_buttons` persiste a carga exibida e o token do clique. A gravacao
 atomica rejeita cliques duplicados, botoes antigos, exercicios fora de ordem
@@ -101,24 +107,12 @@ O bot so responde ao `CHAT_ID` configurado no codigo.
 /cintura        mostra a cintura atual e o historico
 /status         mostra progresso
 /desfazer       apaga o ultimo registro
+/perfil         nivel, EXP e sequencia semanal
 /ajuda          mostra ajuda
-/fundamentos    fase pre-ciclo: bandagem, luva e direto pro saco em rounds
-/fundamentos a  sessao de fundamentos (a, b ou c)
-/mt             roteiro de Muay Thai de hoje (ter/qui/sab)
-/mtterca        forca um dia; idem /mtquinta e /mtsabado
-/proximo        avanca um bloco do roteiro
-/mtparar        encerra o roteiro
-/mtregras       regras de seguranca do ciclo
-/tecnicas       indice da biblioteca de execucao
-/como NOME      passo a passo e erros comuns de um movimento
 ```
 
 Todos os comandos textuais exigem `/` e usam somente os nomes oficiais em
 PT-BR. Entradas numericas continuam reservadas para carga e RPE.
-
-Os comandos de Muay Thai vivem em `limulus/muaythai.py` e nao tocam o
-SQLite. Detalhes de uso e da biblioteca de execucao em
-[Catalogo de comandos](comandos.md).
 
 ## `/peso`
 

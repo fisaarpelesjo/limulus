@@ -510,7 +510,63 @@ Antes de adicionar um item:
 4. avaliar riscos para o banco e o historico
 5. planejar testes isolados
 
+### App Android (PWA Instalavel)
+
+**Ideia registrada em 2026-11-23, para depois do jogo estabilizar:** ter um
+app no Android alem do Telegram. Caminho preferido: uma PWA servida pela VPS,
+instalavel na tela inicial e, se for preciso um `.apk`, empacotada com
+Bubblewrap ou Capacitor. Reaproveita os modulos de `limulus/` por meio de uma
+API leve na VPS e le o mesmo SQLite, convivendo com o bot.
+
+**Decisoes pendentes:** dominio com HTTPS para a VPS, forma de proteger o
+acesso (o bot hoje se protege pelo chat) e se havera notificacoes push.
+
+### Jogo Estilo JRPG: Fases 2 E 3
+
+**Problema observado:** a fase 1 (EXP, nivel, titulo, tela de vitoria,
+sequencia semanal 5 de 5 com 2 coringas por mes e `/perfil`) foi entregue em
+2026-11-23. Os numeros ainda precisam ser calibrados com o uso real.
+
+**Comportamento esperado:**
+
+- fase 2: classes que mudam pelo atributo mais treinado e evoluem com o
+  nivel; atributos FOR (rank por padrao de movimento relativo ao `/peso`, o
+  padrao mais fraco limita o rank geral), HIP (series efetivas por musculo via
+  `exercise_muscle_groups`) e DISCIPLINA (aderencia ao RPE e sequencia);
+  chefes por levantamento principal, derrotados por recorde com RPE ate 9
+- fase 3: conquistas, missoes semanais de qualidade (nunca "fazer mais"),
+  ouro para comprar coringas extras, `/pausa` para lesao ou viagem sem perder
+  a sequencia e card de nivel no dashboard
+- Muay Thai fica fora do jogo ate voltar aos planos; em 2026-11-23 ele foi
+  removido do codigo (`limulus/muaythai.py`, comandos e `mt_session.json`
+  continuam no historico do git) e volta quando estiver de novo nos planos
+
+**Principios vindos da pesquisa:** sequencia semanal com coringas (Hevy,
+Strava, Duolingo; reserva de emergencia de Sharif e Shu); nada de punir falta
+ou descanso; EXP por constancia e RPE certo, nao por tonelagem, para nao
+premiar series de lixo nem carga exagerada; forca como eixo separado,
+relativo ao peso corporal (Symmetric Strength, Liftoff).
+
 ## Historico De Entregas
+
+### 2026-11-23
+
+- jogo estilo JRPG, fase 1: `limulus/jogo.py` calcula EXP, nivel, titulo e
+  sequencia a partir do historico; tela de vitoria ao concluir o treino e
+  comando `/perfil`
+- bot mais rapido: long polling de 25 s sem pausa entre ciclos e sessao HTTP
+  reaproveitada para todas as chamadas a API do Telegram
+- mensagens com tom JRPG leve: header `⚔ NOME`, "⚔ Nova batalha!",
+  "⚔ Batalha em andamento", "↩ Turno desfeito", "Golpe registrado! ⚔",
+  confirmacao `✓ 57 kg · RPE 8 · +10 EXP`, "🏁 TREINO CONCLUÍDO" e emojis nos
+  cabecalhos de `/prever`, `/ajuda`, `/volume`, `/planos`, `/dieta`, `/peso` e
+  `/cintura`
+- teclado de inicio renomeado para "⚔ Iniciar treino" e "🍖 Ver dieta";
+  comando invalido sem sessao ativa devolve o teclado novo, trocando o antigo
+  que tenha ficado no celular
+- Muay Thai removido do codigo (`limulus/muaythai.py`, comandos `/mt*`,
+  `/fundamentos`, `/proximo`, `/tecnicas`, `/como` e `mt_session.json`); fica no
+  historico do git para voltar quando estiver de novo nos planos
 
 ### 2026-10-26
 

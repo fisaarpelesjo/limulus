@@ -87,7 +87,7 @@ def main():
             assert supino_inclinado["loading_note"] == "barra reta 2,20 m 11kg + 30kg de anilhas"
             assert supino_inclinado["reps"] == 12
             assert "Descanso: <b>2 min</b>" in sent_messages[-1]
-            assert "Sessão iniciada" in sent_messages[-2]
+            assert "Nova batalha!" in sent_messages[-2]
             assert "Carga alvo ainda não definida." in sent_messages[-1]
             assert (
                 "<b>SUPINO RETO</b>\n\nSéries: <b>3</b>"
@@ -137,7 +137,7 @@ def main():
             assert "Total com barra: 65 · 73 · 82 kg" in sent_messages[-1]
 
             telegram_poller.handle("/status", session)
-            assert "Treino" in sent_messages[-2]
+            assert "Batalha em andamento" in sent_messages[-2]
             assert f"1/{total_exercises}" in sent_messages[-2]
             assert "Peso atual: 118,5 kg" in sent_messages[-2]
 
@@ -145,7 +145,7 @@ def main():
             undone_log = _fetch_log(test_db, first_log_id)
             assert undone_log["weight"] is None
             assert undone_log["rpe"] is None
-            assert "Desfeito" in sent_messages[-2]
+            assert "Turno desfeito" in sent_messages[-2]
 
             telegram_poller.handle("80,5", session)
             relogged = _fetch_log(test_db, first_log_id)

@@ -86,8 +86,10 @@ ajudarem a clareza, mas devem ser acompanhados de contexto em portugues sempre
 que forem visiveis ao usuario ou na documentacao.
 
 Comandos textuais do Telegram devem usar somente os nomes oficiais em PT-BR e
-exigir `/`, exceto os textos exatos do teclado "Gerar treino" e
-"Mostrar dieta". Nao aceitar outros aliases em ingles ou nomes sem barra.
+exigir `/`, exceto os textos exatos do teclado "⚔ Iniciar treino" e
+"🍖 Ver dieta". Nao aceitar outros aliases em ingles ou nomes sem barra.
+Comando invalido sem sessao ativa responde com o teclado de inicio, para que um
+teclado antigo no celular seja substituido.
 
 ## Sincronizacao Das Instrucoes De Agentes
 
@@ -119,7 +121,11 @@ Bot Telegram usado para controlar o treino pelo celular.
 
 O polling usa logs com horario, nivel, comando e `session_id`, sem registrar
 token ou URL completa da API. Falhas temporarias usam espera gradual; token
-invalido encerra o polling com erro claro.
+invalido encerra o polling com erro claro. O `getUpdates` usa long polling
+(`POLL_TIMEOUT` = 25 s) sem pausa entre ciclos, e todas as chamadas a API
+passam pela sessao HTTP `telegram_poller.HTTP` (`requests.Session`), que
+reaproveita a conexao; por isso o clique no RPE e processado na hora. Testes
+que simulam a rede devem substituir `telegram_poller.HTTP.get/post`.
 
 Comandos principais:
 
@@ -139,22 +145,26 @@ Comandos principais:
 - `/cintura`
 - `/status`
 - `/desfazer`
+- `/perfil`
 - `/ajuda`
 - `80` ou `80 8` para registrar carga e RPE opcional
-- `/fundamentos`, `/fundamentos a|b|c` (bandagem + luva, direto pro saco em rounds)
-- `/mt`, `/mtterca`, `/mtquinta`, `/mtsabado` (semana opcional: `/mtterca 3`)
-- `/proximo`, `/mtparar`, `/mtregras`
-- `/tecnicas`, `/como NOME` (curto), `/como NOME tudo` (completo)
 
 Todos os comandos textuais exigem `/`. Entradas numericas de carga e RPE nao
 usam barra.
-Os comandos de Muay Thai entregam o roteiro do dia bloco a bloco e nao gravam
-nada no banco; `/como` devolve o essencial de cada golpe e `/como NOME tudo` o passo a passo
-completo, com a busca normalizando acento, espaco e alias em `muaythai.buscar_tecnica`.
 `/aquecimento` mostra uma sequencia dinamica curta de corpo todo, com cerca de
 5 minutos, sem prescrever um segundo treino.
 
 Fluxo:
+
+Tom JRPG leve nas mensagens: header do exercicio `⚔ NOME` em caixa alta;
+inicio "⚔ Nova batalha!"; retomada "⚔ Treino em andamento..."; `/status`
+"⚔ Batalha em andamento — X/Y" ou "🏁 Treino completo."; `/desfazer`
+"↩ Turno desfeito: NOME"; o clique no RPE mostra o aviso "Golpe registrado! ⚔"
+e edita a mensagem com "✓ 57 kg · RPE 8 · +10 EXP" (EXP da serie = 10 x
+aderencia do RPE, de `limulus/jogo.py`); conclusao "🏁 TREINO CONCLUÍDO" com
+"⭐ Recordes: ..."; `/prever` "🔮 Treino de hoje — N exercícios"; `/ajuda`
+"📜 Menu do Limulus"; `/volume` 📊, `/planos` 🗺, `/dieta` "🍖 DIETA ATUAL",
+`/peso` e `/cintura` 📏. Os rotulos dos botoes RPE nao mudam.
 
 O exercicio atual em `/gerar`, `/status` e no proximo exercicio usa blocos
 separados por linhas em branco: nome; uma linha por serie
@@ -164,12 +174,12 @@ descanso com valores em negrito; barra, `Total com barra: 65 · 73 · 82 kg` e
 series; `Séries: N` so aparece sem alvo. Nao usar o prefixo "Comece por".
 A lista de `/prever` mostra o alvo como `65→73→82kg`.
 
-1. `/gerar` e "Gerar treino" iniciam uma sessao ou retomam a atual. Enviam
+1. `/gerar` e "⚔ Iniciar treino" iniciam uma sessao ou retomam a atual. Enviam
    data/hora de Brasilia e o primeiro exercicio, sem a lista completa.
    O teclado de inicio some durante o treino e retorna ao concluir.
    Botoes RPE ≤7, 8, 9 e ≥10 registram a carga total exibida e avancam;
    os extremos sao armazenados como 7 e 10. Nao ha botao sem RPE.
-   Header em caixa alta; body com uma linha por serie da piramide, repeticoes
+   Header `⚔ NOME` em caixa alta; body com uma linha por serie da piramide, repeticoes
    e descanso; footer em italico com barra, total por serie e "RPE da última
    série". Apenas valores em negrito no body. Sem alvo, pedir a primeira carga manualmente.
 2. O texto gerado mostra `alvo`, calculado pela ultima carga registrada e pelo RPE, e `descanso`.
@@ -190,7 +200,7 @@ A lista de `/prever` mostra o alvo como `65→73→82kg`.
    do plano ativo A ou B, o bot ativa o outro automaticamente.
 10. `/dashboard` atualiza `temp/dashboard-treino.html` e responde com horario,
    ultima sessao, volume e RPE medio geral, sem expor caminho local.
-11. `/dieta` e o teclado "Mostrar dieta" listam os alimentos de `diet_entries`
+11. `/dieta` e o teclado "🍖 Ver dieta" listam os alimentos de `diet_entries`
     agrupados por refeicao e comparam os totais de calorias, proteina,
     carboidrato e gordura com as metas de `diet_targets`, sem criar sessao,
     logs ou alterar o banco.
@@ -198,6 +208,23 @@ A lista de `/prever` mostra o alvo como `65→73→82kg`.
     atual, a variacao anterior e as ultimas medicoes.
 13. `/cintura VALOR` registra a circunferencia da cintura em centimetros e
     `/cintura` consulta o valor atual, a variacao e as ultimas medicoes.
+
+### `limulus/jogo.py`
+
+Camada de jogo no estilo JRPG (fase 1). Tudo e calculado a partir das
+sessoes concluidas no SQLite, sem tabela propria: mudar uma regra recalcula
+o historico inteiro. Sessao concluida vale 50 EXP; cada exercicio vale
+10 EXP vezes a aderencia ao RPE (8 ou 9 = 1,0; 7 ou menos = 0,5; 10 = 0,3;
+sem RPE = 0,5); recorde de carga com RPE ate 9 vale 20 EXP, no maximo um por
+exercicio por semana; semana cumprida (5 treinos de segunda a domingo) vale
+100 EXP. Nivel: `exp_para_nivel(N) = round(100 * (N - 1) ** 1.8)`, com
+titulos por faixa (Aprendiz, Escudeiro, Soldado, Cavaleiro, Paladino,
+Campeao, Heroi, Lenda). Sequencia = semanas seguidas cumpridas; semana
+incompleta gasta um coringa (2 por mes, pelo mes da segunda-feira) e mantem
+a sequencia sem somar; sem coringa, zera. Ao concluir o treino o bot envia a
+tela de vitoria (`send_victory`) depois do resumo; `/perfil` mostra a ficha.
+Falha no calculo do jogo so gera log e nunca interrompe o treino. Teste:
+`python tests/jogo_test.py`. Fases seguintes no roadmap.
 
 ### `limulus/ods_ops.py`
 

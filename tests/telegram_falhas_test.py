@@ -25,13 +25,13 @@ class FakeResponse:
 
 
 def main():
-    original_get = telegram_poller.requests.get
-    original_post = telegram_poller.requests.post
+    original_get = telegram_poller.HTTP.get
+    original_post = telegram_poller.HTTP.post
     original_sleep = telegram_poller.time.sleep
     sleeps = []
 
     try:
-        telegram_poller.requests.get = lambda *args, **kwargs: FakeResponse(401)
+        telegram_poller.HTTP.get = lambda *args, **kwargs: FakeResponse(401)
         try:
             telegram_poller.get_updates()
             raise AssertionError("Token invalido deveria encerrar o polling.")
@@ -41,7 +41,7 @@ def main():
         def failing_get(*args, **kwargs):
             raise requests.ConnectionError()
 
-        telegram_poller.requests.get = failing_get
+        telegram_poller.HTTP.get = failing_get
         try:
             telegram_poller.get_updates()
             raise AssertionError("Falha de rede deveria ser temporaria.")
@@ -56,7 +56,7 @@ def main():
                 raise requests.Timeout()
             return FakeResponse()
 
-        telegram_poller.requests.post = unstable_post
+        telegram_poller.HTTP.post = unstable_post
         telegram_poller.time.sleep = sleeps.append
         assert telegram_poller.send("teste") is True
         assert attempts["count"] == 3
@@ -78,8 +78,8 @@ def main():
 
         print("Teste de falhas do Telegram passou.")
     finally:
-        telegram_poller.requests.get = original_get
-        telegram_poller.requests.post = original_post
+        telegram_poller.HTTP.get = original_get
+        telegram_poller.HTTP.post = original_post
         telegram_poller.time.sleep = original_sleep
 
 

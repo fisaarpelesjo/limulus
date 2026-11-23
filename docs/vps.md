@@ -22,7 +22,7 @@ Antes de qualquer operacao remota:
 4. Fazer backup do SQLite vivo com `gerenciar_dados.py backup` antes de deploys
    que alterem esquema, persistencia ou migracoes.
 5. Atualizar codigo com fast-forward e preservar `.env`, `.venv/`, `logs/`,
-   `session.json`, `mt_session.json` e `data/limulus.db`.
+   `session.json` e `data/limulus.db`.
 6. Reiniciar apenas o servico do Limulus e verificar status e logs operacionais.
 
 Uma forma segura de montar o comando de acesso a partir dos campos e:

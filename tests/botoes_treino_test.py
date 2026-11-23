@@ -89,11 +89,12 @@ def main():
                 data = messages[-1][1]['reply_markup']['inline_keyboard'][0][1]['callback_data']
                 click(data)
                 assert db_ops.count_filled(ids) == index + 1
-            assert 'TREINO CONCLUÍDO' in messages[-1][0]
-            assert 'Duração:' in messages[-1][0]
-            assert 'RPE médio: <b>8,0</b>' in messages[-1][0]
-            assert 'Comparação com o treino anterior' in messages[-1][0]
-            assert messages[-1][1]['reply_markup'] == bot.KEYBOARD_START
+            assert 'VITÓRIA' in messages[-1][0]
+            assert 'TREINO CONCLUÍDO' in messages[-2][0]
+            assert 'Duração:' in messages[-2][0]
+            assert 'RPE médio: <b>8,0</b>' in messages[-2][0]
+            assert 'Comparação com o treino anterior' in messages[-2][0]
+            assert messages[-2][1]['reply_markup'] == bot.KEYBOARD_START
             timing = db_ops.get_session_timing(initial_id)
             assert timing['started_at'].endswith('-03:00') and timing['completed_at']
             click(data)

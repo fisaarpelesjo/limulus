@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import dashboard
 from . import db_ops
-from . import muaythai
+from . import jogo
 from . import ods_ops
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -19,6 +19,12 @@ LOGGER = logging.getLogger("limulus.telegram")
 SEND_RETRY_DELAYS = (1, 2)
 POLL_RETRY_INITIAL = 3
 POLL_RETRY_MAX = 60
+# Long polling: o Telegram segura a requisicao ate chegar uma atualizacao (ou
+# ate o tempo limite) e responde na hora em que o botao e tocado.
+POLL_TIMEOUT = 25
+# Sessao HTTP unica reaproveita a conexao TLS com a API entre as chamadas,
+# evitando um novo handshake a cada mensagem, edicao ou resposta de botao.
+HTTP = requests.Session()
 
 
 class TelegramTemporaryError(RuntimeError):
@@ -60,7 +66,7 @@ def send(text, reply_markup=None):
     attempts = len(SEND_RETRY_DELAYS) + 1
     for attempt in range(1, attempts + 1):
         try:
-            response = requests.post(
+            response = HTTP.post(
                 f"{API}/sendMessage",
                 json=payload,
                 timeout=10,
@@ -112,11 +118,11 @@ def load_session():
 
 def get_updates(offset=0):
     try:
-        r = requests.get(
+        r = HTTP.get(
             f"{API}/getUpdates",
-            params={"offset": offset, "timeout": 3,
+            params={"offset": offset, "timeout": POLL_TIMEOUT,
                     "allowed_updates": json.dumps(["message", "callback_query"])},
-            timeout=10,
+            timeout=POLL_TIMEOUT + 10,
         )
         if r.status_code in (401, 404):
             raise TelegramConfigurationError(
@@ -181,7 +187,7 @@ def _format_current_exercise(ex):
     display_name = _display_exercise_name(ex["name"])
     target = ex.get("target_weight")
     equipment = ods_ops.LOAD_EQUIPMENT.get(ex["name"])
-    header = f"<b>{escape(display_name.upper())}</b>"
+    header = f"⚔ <b>{escape(display_name.upper())}</b>"
     set_weights = ods_ops.get_set_weights(ex["name"], target, ex["sets"])
     body = []
     bar_weight = equipment["weight"] if equipment else 0.0
@@ -233,7 +239,7 @@ def _format_exercise_line(idx, ex):
 
 
 def _format_training_msg(exercises):
-    lines = [f"<b>Treino de hoje — {len(exercises)} exercícios</b>"]
+    lines = [f"🔮 <b>Treino de hoje — {len(exercises)} exercícios</b>"]
     lines.extend(_format_exercise_line(idx, ex) for idx, ex in enumerate(exercises, start=1))
     return "\n\n".join(lines)
 
@@ -295,7 +301,7 @@ def _format_training_summary(session_id):
             f"{_format_summary_names(summary['maintained_rpe9'])}"
         )
     if summary["records"]:
-        lines.append(f"Recordes: {len(summary['records'])} — {_format_summary_names(summary['records'])}")
+        lines.append(f"⭐ Recordes: {len(summary['records'])} — {_format_summary_names(summary['records'])}")
     return "\n".join(lines)
 
 
@@ -316,8 +322,11 @@ def _format_exercises_msg(exercises):
     return "".join(lines)
 
 
+TECLADO_TREINO = "⚔ Iniciar treino"
+TECLADO_DIETA = "🍖 Ver dieta"
+
 KEYBOARD_START = {
-    "keyboard": [[{"text": "Gerar treino"}, {"text": "Mostrar dieta"}]],
+    "keyboard": [[{"text": TECLADO_TREINO}, {"text": TECLADO_DIETA}]],
     "resize_keyboard": True,
     "is_persistent": True,
 }
@@ -326,7 +335,7 @@ KEYBOARD_START = {
 def telegram_action(method, payload):
     """Executa ações auxiliares sem expor URL ou token nos erros."""
     try:
-        response = requests.post(f"{API}/{method}", json=payload, timeout=10)
+        response = HTTP.post(f"{API}/{method}", json=payload, timeout=10)
         return response.status_code == 200 and response.json().get("ok", False)
     except (requests.RequestException, ValueError):
         LOGGER.warning("Falha na ação Telegram metodo=%s", method)
@@ -347,7 +356,7 @@ def send_current_exercise(ex):
 
 def send_completion(session):
     timing = db_ops.get_session_timing(session['session_id'])
-    lines = ["<b>TREINO CONCLUÍDO</b>"]
+    lines = ["🏁 <b>TREINO CONCLUÍDO</b>"]
     start = datetime.fromisoformat(timing['started_at']) if timing.get('started_at') else None
     end = datetime.fromisoformat(timing['completed_at']) if timing.get('completed_at') else None
     if start:
@@ -360,6 +369,22 @@ def send_completion(session):
     total = len(session['exercises'])
     lines.extend(["", f"Exercícios: <b>{total}/{total}</b>", "", _format_training_summary(session['session_id'])])
     send("\n".join(lines), reply_markup=KEYBOARD_START)
+    send_victory(session['session_id'])
+
+
+def send_victory(session_id):
+    """Envia a tela de vitoria do jogo; falha aqui nunca afeta o treino."""
+    try:
+        resultado = jogo.resultado_da_sessao(session_id)
+    except Exception as exc:
+        LOGGER.error("Falha ao calcular EXP session_id=%s tipo=%s", session_id, type(exc).__name__)
+        return
+    if resultado is not None:
+        send(jogo.formatar_vitoria(resultado))
+
+
+def handle_profile():
+    send(jogo.formatar_perfil(jogo.estado_atual()))
 
 
 def handle_rpe_callback(query):
@@ -374,13 +399,14 @@ def handle_rpe_callback(query):
     result = db_ops.registrar_rpe_botao(parts[1], int(parts[2])) if session else None
     telegram_action('answerCallbackQuery', {
         'callback_query_id': query['id'],
-        'text': 'Registrado!' if result else 'Este botão já foi usado ou não é do exercício atual. Use /status.',
+        'text': 'Golpe registrado! ⚔' if result else 'Este botão já foi usado ou não é do exercício atual. Use /status.',
     })
     if not result:
         return
     ex = next(ex for ex in session['exercises'] if ex['log_id'] == result['log_id'])
     ex = dict(ex, target_weight=result['weight'])
-    confirmation = f"✓ {_format_weight(result['weight'])} kg · RPE {parts[2]} registrado"
+    exp_serie = round(jogo.EXP_SERIE * jogo.aderencia_rpe(int(parts[2])))
+    confirmation = f"✓ {_format_weight(result['weight'])} kg · RPE {parts[2]} · <b>+{exp_serie} EXP</b>"
     edited = telegram_action('editMessageText', {
         'chat_id': CHAT_ID, 'message_id': message['message_id'], 'parse_mode': 'HTML',
         'text': _format_current_exercise(ex) + '\n\n' + confirmation,
@@ -399,7 +425,7 @@ def handle_generate():
     session = load_session()
     if session:
         filled = db_ops.count_filled([ex['log_id'] for ex in session['exercises']])
-        send("Treino em andamento. Continue pelo exercício abaixo.", reply_markup={"remove_keyboard": True})
+        send("⚔ Treino em andamento. Continue pelo exercício abaixo.", reply_markup={"remove_keyboard": True})
         send_current_exercise(session['exercises'][filled])
         return
     try:
@@ -419,7 +445,7 @@ def handle_generate():
         return
     start = datetime.fromisoformat(db_ops.get_session_timing(session_id)['started_at'])
     send(
-        f"<b>Sessão iniciada</b>\nData: <b>{start:%d/%m/%Y}</b>\n"
+        f"⚔ <b>Nova batalha!</b>\nData: <b>{start:%d/%m/%Y}</b>\n"
         f"Horário: <b>{start:%H:%M}</b> (Brasília)\n\n"
         "Ao terminar cada exercício, toque no RPE para registrar a carga indicada.",
         reply_markup={"remove_keyboard": True},
@@ -442,119 +468,6 @@ def handle_preview():
     msg = _format_training_msg(exercises)
     send(msg)
     send("Previa do treino. Nada foi salvo. Use /gerar para iniciar uma sessao real.")
-
-
-def _mt_semana_do_texto(text, padrao=1):
-    """Semana opcional no comando: /mtterca 3. Fora de 1-8, o modulo ajusta."""
-    partes = text.strip().split()
-    if len(partes) > 1:
-        try:
-            return int(partes[1])
-        except ValueError:
-            pass
-    return padrao
-
-
-def handle_mt_iniciar(chave, text):
-    semana = _mt_semana_do_texto(text)
-    try:
-        muaythai.iniciar(chave, semana)
-    except Exception as exc:
-        LOGGER.error("Falha ao iniciar roteiro MT chave=%s tipo=%s", chave, type(exc).__name__)
-        send("Erro ao iniciar o roteiro. Consulte o terminal.")
-        return
-    send(muaythai.formatar_resumo(chave, semana))
-
-
-def handle_mt_hoje(text):
-    chave = muaythai.roteiro_do_dia()
-    if chave is None:
-        send(
-            "Hoje nao e dia de saco.\n\n"
-            "Segunda, quarta e sexta sao musculacao. Domingo e descanso completo.\n"
-            "Use /mtterca, /mtquinta ou /mtsabado para ver outro treino."
-        )
-        return
-    handle_mt_iniciar(chave, text)
-
-
-def handle_mt_proximo():
-    estado = muaythai.carregar_estado()
-    if estado is None:
-        send("Nenhum roteiro de Muay Thai ativo. Use /mt, /mtterca, /mtquinta ou /mtsabado.")
-        return
-    # O primeiro /proximo apos iniciar mostra o bloco 0; os seguintes avancam.
-    if estado.get("mostrou_primeiro"):
-        estado = muaythai.avancar()
-        if estado is None:
-            send("Roteiro concluido. Bom treino.\n\nUse /mtregras para revisar as regras do ciclo.")
-            return
-    else:
-        estado["mostrou_primeiro"] = True
-        muaythai.salvar_estado(estado)
-    send(muaythai.formatar_bloco(estado))
-
-
-def handle_mt_parar():
-    if muaythai.carregar_estado() is None:
-        send("Nenhum roteiro ativo.")
-        return
-    muaythai.limpar_estado()
-    send("Roteiro encerrado.")
-
-
-def handle_fundamentos(text):
-    """/fundamentos [a|b|c]. Sem argumento mostra o indice da fase, com a sessao
-    de hoje marcada -- e a primeira coisa que alguem digita, entao nao pode ser
-    erro."""
-    termo = text.strip()[len("/fundamentos"):].strip()
-    if not termo:
-        send(muaythai.formatar_indice_fundamentos())
-        return
-    chave = muaythai.resolver_fundamentos(termo)
-    if chave is None:
-        send("Sessao nao reconhecida. Use /fundamentos a, b ou c.\n\n"
-             "Sem argumento, /fundamentos mostra a fase inteira.")
-        return
-    try:
-        muaythai.iniciar(chave)
-    except Exception as exc:
-        LOGGER.error("Falha ao iniciar fundamentos chave=%s tipo=%s", chave, type(exc).__name__)
-        send("Erro ao iniciar a sessao. Consulte o terminal.")
-        return
-    send(muaythai.formatar_resumo(chave))
-
-
-# Sufixos que pedem a versao longa de /como.
-COMO_COMPLETO = {"tudo", "completo", "detalhe", "detalhado", "full"}
-
-
-def handle_como(text):
-    """/como <tecnica> devolve o essencial; /como <tecnica> tudo devolve o passo
-    a passo completo. O curto e o padrao porque a consulta acontece durante o
-    treino, entre uma serie e outra, nao sentado estudando."""
-    termo = text.strip()[len("/como"):].strip()
-    if not termo:
-        send(muaythai.formatar_indice_tecnicas())
-        return
-
-    partes = termo.split()
-    completo = len(partes) > 1 and partes[-1].lower() in COMO_COMPLETO
-    if completo:
-        termo = " ".join(partes[:-1])
-
-    chave = muaythai.buscar_tecnica(termo)
-    if chave is None:
-        send(muaythai.formatar_tecnica_nao_encontrada(termo))
-        return
-
-    if not completo:
-        send(muaythai.formatar_tecnica_curta(chave))
-        return
-    # A versao longa pode passar do limite de 4096 do Telegram; enviar em partes
-    # em vez de encurtar a instrucao.
-    for parte in muaythai.dividir_mensagem(muaythai.formatar_tecnica(chave)):
-        send(parte)
 
 
 def handle_training_b():
@@ -591,7 +504,7 @@ def handle_volume():
             for muscle in muscles:
                 muscle_sets[muscle] = muscle_sets.get(muscle, 0) + ex["sets"]
         lines = [
-            "<b>Volume por musculo</b>\n",
+            "📊 <b>Volume por musculo</b>\n",
             "<i>series/sessao → series/semana (~3.5x)</i>\n",
         ]
         for muscle, sets in sorted(muscle_sets.items()):
@@ -608,7 +521,7 @@ def handle_plans():
     if not plans:
         send("Nenhum plano de treino cadastrado.")
         return
-    lines = ["<b>Planos de treino</b>"]
+    lines = ["🗺 <b>Planos de treino</b>"]
     for plan in plans:
         marker = " ✓ ativo" if plan["active"] else ""
         lines.append(
@@ -692,7 +605,7 @@ def handle_diet():
     for entry in entries:
         meals.setdefault(entry["meal"], []).append(entry)
 
-    lines = ["<b>DIETA ATUAL</b>"]
+    lines = ["🍖 <b>DIETA ATUAL</b>"]
     for meal, items in meals.items():
         lines.append("")
         lines.append(_format_diet_meal(meal, items))
@@ -719,7 +632,7 @@ def handle_weight(text):
             send(f"{exc}\nUse <code>/peso 118,5</code>.")
             return
         send(
-            f"Peso registrado: <b>{_format_body_weight(entry['weight_kg'])} kg</b>."
+            f"📏 Peso registrado: <b>{_format_body_weight(entry['weight_kg'])} kg</b>."
         )
         return
 
@@ -730,7 +643,7 @@ def handle_weight(text):
 
     latest = history[0]
     lines = [
-        "<b>Peso corporal</b>",
+        "📏 <b>Peso corporal</b>",
         f"Atual: <b>{_format_body_weight(latest['weight_kg'])} kg</b>",
         f"Registrado em: {_format_weight_date(latest['recorded_at'])}",
     ]
@@ -760,7 +673,7 @@ def handle_waist(text):
             send(f"{exc}\nUse <code>/cintura 110,5</code>.")
             return
         send(
-            "Cintura registrada: "
+            "📏 Cintura registrada: "
             f"<b>{_format_body_weight(entry['circumference_cm'])} cm</b>."
         )
         return
@@ -772,7 +685,7 @@ def handle_waist(text):
 
     latest = history[0]
     lines = [
-        "<b>Circunferencia da cintura</b>",
+        "📏 <b>Circunferencia da cintura</b>",
         f"Atual: <b>{_format_body_weight(latest['circumference_cm'])} cm</b>",
         f"Registrada em: {_format_weight_date(latest['recorded_at'])}",
     ]
@@ -812,14 +725,14 @@ def handle(text, session):
             else ""
         )
         if filled >= total:
-            send(f"Treino completo. {total}/{total} ✓{weight_line}", reply_markup=KEYBOARD_START)
+            send(f"🏁 Treino completo. {total}/{total} ✓{weight_line}", reply_markup=KEYBOARD_START)
         else:
             ex = exercises[filled]
             done = "\n".join(
                 f"✓ {_display_exercise_name(exercises[i]['name'])}"
                 for i in range(filled)
             )
-            msg = f"Treino — {filled}/{total}\n"
+            msg = f"⚔ Batalha em andamento — {filled}/{total}\n"
             if done:
                 msg += done + "\n"
             msg += weight_line
@@ -833,7 +746,7 @@ def handle(text, session):
             return
         last_ex = exercises[filled - 1]
         db_ops.update_log_weight(last_ex["log_id"], None, None)
-        send(f"↩ Desfeito: <b>{_display_exercise_name(last_ex['name'])}</b>", reply_markup={"remove_keyboard": True})
+        send(f"↩ Turno desfeito: <b>{_display_exercise_name(last_ex['name'])}</b>", reply_markup={"remove_keyboard": True})
         send_current_exercise(last_ex)
         return
 
@@ -914,7 +827,7 @@ def main():
 
                 if lower == "/ajuda":
                     send(
-                        "<b>Limulus — Comandos</b>\n\n"
+                        "📜 <b>Menu do Limulus</b>\n\n"
                         "/gerar — inicia ou retoma o treino\n"
                         "/prever — mostra uma previa sem salvar\n"
                         "/treinob — mostra o treino B de garagem\n"
@@ -931,19 +844,8 @@ def main():
                         "/cintura — mostra a cintura atual e o historico\n"
                         "/status — exercicio atual e progresso\n"
                         "/desfazer — apaga o ultimo registro\n"
+                        "/perfil — nivel, EXP e sequencia semanal\n"
                         "/ajuda — esta mensagem\n\n"
-                        "<b>Muay Thai</b>\n"
-                        "/fundamentos — fase sem saco, um movimento por vez\n"
-                        "/fundamentos a|b|c — sessao de fundamentos\n"
-                        "/mt — treino de hoje (ter/qui/sab)\n"
-                        "/mtterca, /mtquinta, /mtsabado — treino especifico\n"
-                        "/proximo — proximo bloco do roteiro\n"
-                        "/mtparar — encerra o roteiro\n"
-                        "/mtregras — regras do ciclo\n"
-                        "/tecnicas — todas as tecnicas\n"
-                        "/como &lt;tecnica&gt; — o essencial (ex: /como chute baixo)\n"
-                        "/como &lt;tecnica&gt; tudo — passo a passo completo\n"
-                        "<i>semana opcional: /mtterca 3</i>\n\n"
                         "<b>Registrar treino:</b> toque no RPE abaixo do exercício.\n"
                         "O botão usa a carga total indicada.\n\n"
                         "<b>Registro manual, se necessário:</b>\n"
@@ -952,6 +854,14 @@ def main():
                     )
                     if load_session() is None:
                         send("Toque abaixo para iniciar.", reply_markup=KEYBOARD_START)
+                    continue
+
+                if lower == "/perfil":
+                    try:
+                        handle_profile()
+                    except Exception as exc:
+                        LOGGER.error("Falha ao montar perfil tipo=%s", type(exc).__name__)
+                        send("Não foi possível montar o perfil. Consulte o terminal.")
                     continue
 
                 if lower == "/exercicios":
@@ -997,47 +907,7 @@ def main():
                     )
                     continue
 
-                if lower == "/mt" or lower.startswith("/mt "):
-                    handle_mt_hoje(text)
-                    continue
-
-                if lower.startswith("/mtterca"):
-                    handle_mt_iniciar("terca", text)
-                    continue
-
-                if lower.startswith("/mtquinta"):
-                    handle_mt_iniciar("quinta", text)
-                    continue
-
-                if lower.startswith("/mtsabado"):
-                    handle_mt_iniciar("sabado", text)
-                    continue
-
-                if lower == "/proximo":
-                    handle_mt_proximo()
-                    continue
-
-                if lower == "/mtparar":
-                    handle_mt_parar()
-                    continue
-
-                if lower == "/mtregras":
-                    send(muaythai.formatar_regras())
-                    continue
-
-                if lower == "/fundamentos" or lower.startswith("/fundamentos "):
-                    handle_fundamentos(text)
-                    continue
-
-                if lower == "/tecnicas":
-                    send(muaythai.formatar_indice_tecnicas())
-                    continue
-
-                if lower == "/como" or lower.startswith("/como "):
-                    handle_como(text)
-                    continue
-
-                if lower in {"/gerar", "gerar treino"}:
+                if lower in {"/gerar", TECLADO_TREINO.lower()}:
                     try:
                         handle_generate()
                     except Exception as exc:
@@ -1053,7 +923,7 @@ def main():
                     handle_training_b()
                     continue
 
-                if lower in {"/dieta", "mostrar dieta"}:
+                if lower in {"/dieta", TECLADO_DIETA.lower()}:
                     try:
                         handle_diet()
                     except Exception as exc:
@@ -1062,7 +932,14 @@ def main():
                     continue
 
                 if not _is_session_input(text):
-                    send("Comando invalido. Use /ajuda.")
+                    try:
+                        sem_sessao = load_session() is None
+                    except Exception:
+                        sem_sessao = False
+                    send(
+                        "Comando invalido. Use /ajuda.",
+                        reply_markup=KEYBOARD_START if sem_sessao else None,
+                    )
                     continue
 
                 try:
@@ -1077,7 +954,7 @@ def main():
                     continue
                 if session is None:
                     LOGGER.info("Comando sem sessao ativa comando=%s", command)
-                    send("Nenhuma sessão ativa. Toque em Gerar treino.", reply_markup=KEYBOARD_START)
+                    send("Nenhuma sessão ativa. Toque em ⚔ Iniciar treino.", reply_markup=KEYBOARD_START)
                     continue
 
                 LOGGER.info(
@@ -1095,8 +972,6 @@ def main():
                         type(exc).__name__,
                     )
                     send("Erro ao processar o comando. Consulte o terminal.")
-
-            time.sleep(3)
     except KeyboardInterrupt:
         LOGGER.info("Bot encerrado pelo usuario.")
 
