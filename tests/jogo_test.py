@@ -42,6 +42,37 @@ def _assert_regras_puras():
     assert jogo.rank_por_razao(0.5, (0.5, 1.0)) == 1
     assert jogo.rank_por_razao(1.2, (0.5, 1.0)) == 2
 
+    # Inimigos: 24 unicos, 3 por familia, sorteio estavel no dia e variado entre dias.
+    assert len(jogo.BASES_INIMIGOS) == 48 == len(set(jogo.BASES_INIMIGOS))
+    assert len(jogo.TODOS_OS_INIMIGOS) == 192 == len(set(jogo.TODOS_OS_INIMIGOS))
+    assert all(len(f) == 6 for f in jogo.FAMILIAS_INIMIGOS.values())
+    assert jogo.separar_tier("Golem de Ferro · Elite") == ("Golem de Ferro", 1)
+    assert jogo.separar_tier("Golem de Ferro") == ("Golem de Ferro", 0)
+    assert jogo.nome_com_tier("Basilisco", 3) == "Basilisco · Lendário"
+    assert [jogo.tier_maximo(n) for n in (1, 9, 10, 24, 25, 44, 45, 99)] == [0, 0, 1, 1, 2, 2, 3, 3]
+    peito = [{"muscle_group": "Peitoral", "role": "principal"}]
+    dia = date(2026, 11, 23)
+    primeiro = jogo.inimigo_do_exercicio(peito, "Supino reto (barra)", dia)
+    assert jogo.separar_tier(primeiro)[0] in jogo.FAMILIAS_INIMIGOS["peito"]
+    # Nivel baixo: no maximo Elite (a versao rara); nivel 60 libera tudo.
+    tiers_baixos = {
+        jogo.separar_tier(jogo.inimigo_do_exercicio(peito, f"ex{i}", dia, 1))[1] for i in range(300)
+    }
+    assert tiers_baixos == {0, 1}
+    tiers_altos = {
+        jogo.separar_tier(jogo.inimigo_do_exercicio(peito, f"ex{i}", dia, 60))[1] for i in range(300)
+    }
+    assert tiers_altos == {0, 1, 2, 3}
+    assert jogo.inimigo_do_exercicio(peito, "Supino reto (barra)", dia) == primeiro
+    variados = {
+        jogo.inimigo_do_exercicio(peito, "Supino reto (barra)", dia + timedelta(days=i))
+        for i in range(30)
+    }
+    assert len({jogo.separar_tier(n)[0] for n in variados}) >= 3
+    assert jogo.familia_do_exercicio([("Biceps", "principal")]) == "bracos"
+    assert jogo.familia_do_exercicio([("Core", "secundario"), ("Triceps", "principal")]) == "triceps"
+    assert jogo.familia_do_exercicio([]) == "outros"
+
     semana = date(2026, 11, 23)
     missoes = jogo.missoes_da_semana(semana)
     assert len(missoes) == jogo.MISSOES_POR_SEMANA
@@ -365,7 +396,7 @@ def _assert_fluxo_telegram():
             assert metodos.count("editMessageText") >= 3
             ultimo_quadro = [c for c in api.chamadas if c[0] == "editMessageText"][-1][1]["text"]
             assert "VITÓRIA" in ultimo_quadro and "LEVEL UP" in ultimo_quadro
-            assert "sendPhoto" in metodos and "sendVoice" in metodos
+            assert "sendPhoto" in metodos and "sendVoice" in metodos and "sendAnimation" in metodos
             assert "pinChatMessage" in metodos
             hud_id = jogo.ler_estado("hud_mensagem")
             assert hud_id is not None
@@ -412,6 +443,11 @@ def _assert_fluxo_telegram():
             )
             assert pacote["treinos"] == 1
 
+            telegram_poller.handle_bestiary()
+            assert "BESTIÁRIO" in mensagens[-1][0] and "/192" in mensagens[-1][0]
+            telegram_poller.handle_menu_callback({"id": "1"}, "bestiario")
+            assert "BESTIÁRIO" in mensagens[-1][0]
+
             telegram_poller.handle_shop("/loja")
             assert "LOJA" in mensagens[-1][0]
             telegram_poller.handle_shop("/loja coringa")
@@ -437,7 +473,8 @@ def _assert_fluxo_telegram():
             telegram_poller.send_current_exercise(ex, [ex])
             metodo, payload, arquivos = api.chamadas[-1]
             assert metodo == "sendPhoto" and arquivos is not None
-            assert "QUEST 1/1" in payload["caption"] and "Golem de Ferro" in payload["caption"]
+            assert "QUEST 1/1" in payload["caption"]
+            assert any(nome in payload["caption"] for nome in jogo.FAMILIAS_INIMIGOS["peito"])
             linhas = payload["reply_markup"]["inline_keyboard"]
             assert [len(linha) for linha in linhas] == [2, 2]
             assert linhas[0][1]["text"].startswith("⚔ Certeiro")

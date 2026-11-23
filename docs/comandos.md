@@ -24,19 +24,20 @@ Todos os comandos textuais devem ser enviados com `/`.
 | `/cintura` | Mostra a cintura atual, a variacao e as ultimas medicoes. |
 | `/status` | Mostra o exercicio atual e o progresso da sessao. |
 | `/desfazer` | Remove a carga e o RPE do ultimo registro preenchido. |
-| `/menu` | Abre o menu do heroi em botoes (status, chefes, semana, missoes, conquistas, diario, loja e app). |
+| `/menu` | Abre o menu do heroi em botoes (status, chefes, semana, missoes, conquistas, bestiario, diario, loja e app). |
 | `/perfil` | Mostra a ficha do jogo em imagem e texto: nivel, titulo, classe, EXP, atributos FOR/VIG/DIS, ouro, sequencia semanal e coringas. |
 | `/chefes` | Mostra os chefes de cada padrao de movimento, o rank e o HP restante ate o proximo rank. |
 | `/semana` | Mostra o mapa da semana em imagem e as missoes da semana. |
 | `/missoes` | Mostra as tres missoes da semana e o progresso. |
 | `/conquistas` | Lista as conquistas desbloqueadas e as que faltam. |
+| `/bestiario` | Mostra a galeria das 48 especies (cada uma nas cores do maior tier visto; as nao enfrentadas em silhueta) e a lista por familia com uma marca por tier (⚪ normal, 🔴 Elite, 🟣 Ancestral, 🟡 Lendário) e o total N/192. |
 | `/diario` | Mostra o diario de aventura, uma linha por treino. |
 | `/loja` | Mostra a loja e o ouro disponivel. |
 | `/loja coringa` | Compra um coringa extra com ouro. |
 | `/pausa N` | Declara pausa de N dias (ate 90) por lesao, doenca ou viagem; semanas em pausa nao gastam coringa nem quebram a sequencia. |
 | `/pausa fim` | Encerra a pausa ativa. |
 | `/app` | Envia o botao que abre a ficha completa no Mini App dentro do Telegram. |
-| `/ajuda` | Mostra a ajuda principal do bot. |
+| `/ajuda` | Mostra o grimorio de comandos, em secoes (Batalha, Herói, Mapas e arsenal, Corpo e provisões). |
 | `80` | Registra 80 kg no proximo exercicio pendente. |
 | `80 8` | Registra 80 kg com RPE 8 (carga e RPE da serie de topo). |
 

@@ -58,7 +58,7 @@ def main():
             telegram_poller.handle_preview()
             assert test_db.exists(), "Preview should initialize the database for exercise lookup."
             assert not test_session.exists(), "Preview should not create a session file."
-            assert "Previa do treino. Nada foi salvo." in sent_messages[-1]
+            assert "Isto é só uma visão: nada foi gravado." in sent_messages[-1]
 
             conn = sqlite3.connect(test_db)
             try:
@@ -90,7 +90,7 @@ def main():
             assert supino_inclinado["reps"] == 12
             assert "Descanso entre golpes: <b>2 min</b>" in sent_messages[-1]
             assert "BATALHA INICIADA!" in sent_messages[-2]
-            assert "Carga alvo ainda não definida." in sent_messages[-1]
+            assert "ainda não há carga alvo" in sent_messages[-1]
             assert (
                 "SUPINO RETO</b>\n👹 Derrote o"
                 in sent_messages[-1]
@@ -101,20 +101,20 @@ def main():
             telegram_poller.handle_weight("/peso 118,5")
             assert "118,5 kg" in sent_messages[-1]
             telegram_poller.handle_weight("/peso")
-            assert "Peso corporal" in sent_messages[-1]
+            assert "PESO DO HERÓI" in sent_messages[-1]
             assert "118,5 kg" in sent_messages[-1]
 
             telegram_poller.handle_waist("/cintura 110,5")
             assert "110,5 cm" in sent_messages[-1]
             telegram_poller.handle_waist("/cintura")
-            assert "Circunferencia da cintura" in sent_messages[-1]
+            assert "CINTURA DO HERÓI" in sent_messages[-1]
             assert "110,5 cm" in sent_messages[-1]
 
             telegram_poller.handle("80 8", session)
             first_log = _fetch_log(test_db, first_log_id)
             assert first_log["weight"] == 80.0
             assert first_log["rpe"] == 8.0
-            assert "80.0kg RPE 8" in sent_messages[-2]
+            assert "80 kg · RPE 8 (golpe certeiro)" in sent_messages[-2]
 
             test_session.unlink()
             recovered_session = telegram_poller.load_session()

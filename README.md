@@ -204,7 +204,10 @@ python gerar_frames.py --todos --instalar-ffmpeg
 ## Bot Do Telegram
 
 Todos os comandos textuais exigem `/`. Entradas numericas de carga e RPE nao usam
-barra.
+barra. Todos os textos do bot seguem o estilo JRPG (grimorio no `/ajuda`, visao
+do oraculo no `/prever`, missao na garagem no `/treinob`, arsenal, mapas,
+cronica, provisoes, peso e cintura do heroi, ritual de aquecimento); erros
+comecam com ⚠ e continuam dizendo o motivo concreto.
 
 ```text
 /gerar          Cria uma sessao de treino no SQLite
@@ -228,11 +231,12 @@ barra.
 /semana         Mapa da semana e missoes
 /missoes        Missoes da semana
 /conquistas     Conquistas desbloqueadas
+/bestiario      Galeria dos inimigos enfrentados (N/192)
 /diario         Diario de aventura
 /loja           Loja; /loja coringa compra um coringa extra
 /pausa N        Pausa de N dias (ate 90); /pausa fim volta
 /app            Abre a ficha completa no Mini App
-/ajuda          Mostra ajuda principal
+/ajuda          Mostra o grimorio de comandos, em secoes
 80              Registra 80 kg no proximo exercicio pendente
 80 8            Registra 80 kg com RPE 8
 80,5 8          Aceita virgula decimal e salva 80.5 kg
@@ -270,8 +274,8 @@ Toque em um dos botoes de golpe ("🛡 Leve · RPE ≤7", "⚔ Certeiro · RPE 8
 indicada e avancar; os valores gravados sao 7, 8, 9 e 10 e nao ha botao sem
 RPE. A confirmacao ("💥 Golpe certeiro! 57 kg · RPE 8" e "✅ Quest completa:
 <inimigo> derrotado! +10 EXP") substitui os botoes da quest concluida. No
-fim, o resumo (`🏁 TREINO CONCLUÍDO`) inclui horarios, duracao, volume e
-comparacoes, e o teclado "⚔ Iniciar treino" / "🍖 Ver dieta" reaparece.
+fim, a mensagem "🏆 TREINO CONCLUÍDO · TODAS AS QUESTS VENCIDAS!" traz
+horarios, duracao, uma linha ✅ por quest e o "📊 RELATÓRIO", e o teclado "⚔ Iniciar treino" / "🍖 Ver dieta" reaparece.
 Comando invalido sem sessao ativa tambem devolve esse teclado, o que troca um
 teclado antigo que tenha ficado no celular.
 Use `/ajuda` sem sessao ativa para exibir esse teclado ou `/status` para
@@ -279,9 +283,12 @@ recuperar os botoes da quest atual. Sem carga alvo, informe a primeira
 carga manualmente; entradas numericas continuam disponiveis.
 
 O treino segue o formato de quest: cada exercicio e uma batalha contra um
-inimigo escolhido pelo grupo muscular principal (por exemplo, Golem de Ferro
-para peitoral, Diabrete Rúnico para triceps, Morcego de Ferro para biceps e
-antebraco; Cogumelo Bravo quando nao ha grupo mapeado). A retomada mostra
+inimigo. O grupo muscular principal escolhe uma de 8 familias de 6 inimigos
+base (48 ao todo; por exemplo, peito: Golem de Ferro, Tartaruga Bigorna,
+Cavaleiro Oco...), e cada base tem 4 tiers (comum, Elite no Lv 10, Ancestral
+no Lv 25 e Lendário no Lv 45), 192 inimigos. Um sorteio estavel pela data e
+pelo exercicio define a base e o tier, entre os liberados pelo nivel, com 8%
+de chance de um tier acima: o mesmo o dia todo, outro no dia seguinte. A retomada mostra
 "⚔ Batalha em andamento — quest i/n", o `/status` mostra "⚔ Batalha em
 andamento — i/n quests completas" e o `/desfazer` responde "↩ Turno desfeito:
 NOME".
@@ -329,7 +336,7 @@ Registro numerico:
 4. Atualiza `training_logs.weight` e `training_logs.rpe`.
 5. Envia a proxima quest (imagem de batalha com o card na legenda) com as cargas
    de cada golpe, descanso e barra quando houver.
-6. No ultimo exercicio, envia resumo pos-treino. Se a sessao era do plano ativo
+6. No ultimo exercicio, envia a conclusao com as quests e o relatorio. Se a sessao era do plano ativo
    `A` ou `B`, o outro plano passa a ser o ativo.
 
 `/desfazer` encontra o ultimo log preenchido da sessao ativa e limpa `weight` e
@@ -341,7 +348,14 @@ sao reabertas.
 
 ## Resumo Pos-Treino
 
-Ao concluir a sessao, `db_ops.get_session_summary(session_id)` calcula:
+Ao concluir a sessao, o bot envia "🏆 TREINO CONCLUÍDO · TODAS AS QUESTS
+VENCIDAS!" com inicio, fim e duracao, "📜 QUESTS n/n" com uma linha ✅ por
+quest (exercicio, inimigo, carga e golpe) e o "📊 RELATÓRIO": Dano total
+(volume), Esforço médio (RPE medio), Contra a última batalha igual, Ficaram
+mais fortes, Dominados (mesma carga, menos esforço), Firmes no RPE 9, Recuo
+tático (carga menor) e Recordes.
+
+Os numeros vem de `db_ops.get_session_summary(session_id)`, que calcula:
 
 - volume total da sessao;
 - RPE medio geral;
@@ -359,15 +373,17 @@ evita comparar planos diferentes como se fossem equivalentes.
 `limulus/jogo.py` transforma o historico em um personagem: EXP por presenca e
 por exercicio com RPE certo, recordes, semanas cumpridas e missoes semanais;
 nivel e titulo; ouro e loja (coringa extra); sequencia semanal com coringas e
-pausas declaradas; conquistas; chefes por padrao de movimento com ranks de
+pausas declaradas; conquistas, incluindo o bestiario (`/bestiario`, 192
+inimigos em 48 especies e 4 tiers); chefes por padrao de movimento com ranks de
 Ferro a Diamante pela razao 1RM estimado / peso corporal (aproximacoes de
 padroes publicos de forca, so para o jogo); atributos FOR, VIG e DIS; classe
 e diario. Tudo e recalculado do historico; so compras, pausas e a mensagem
 fixada ficam nas tabelas do schema 16.
 
 Depois do resumo, o bot envia a tela de vitoria (barra de EXP animada por
-edicoes, confete em level up ou semana completa, imagem em pixel art e um som
-curto de level up) e atualiza o HUD fixado no topo do chat. `/app` abre o Mini
+edicoes, confete em level up ou semana completa, imagem em pixel art e, no level
+up, um GIF animado que toca sozinho seguido da fanfarra em audio, que o
+Telegram nao toca sozinho) e atualiza o HUD fixado no topo do chat. `/app` abre o Mini
 App no GitHub Pages com o estado no fragmento `#d=` da URL. Falha no jogo so
 gera log e nunca interrompe o treino. Detalhes em
 [`docs/bot-telegram.md`](docs/bot-telegram.md).

@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from html import escape
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from . import dashboard
@@ -184,9 +184,30 @@ def _display_exercise_name(name):
     return ods_ops.get_display_name(name)
 
 
-def _inimigo(ex):
+# Nivel do heroi usado no sorteio dos inimigos, guardado por um minuto para
+# nao recalcular o jogo inteiro a cada card.
+_NIVEL_CACHE = {"nivel": None, "quando": 0.0}
+
+
+def _nivel_heroi():
+    agora = time.monotonic()
+    if _NIVEL_CACHE["nivel"] is None or agora - _NIVEL_CACHE["quando"] > 60:
+        try:
+            _NIVEL_CACHE["nivel"] = jogo.estado_atual()["nivel"]
+        except Exception:
+            _NIVEL_CACHE["nivel"] = 1
+        _NIVEL_CACHE["quando"] = agora
+    return _NIVEL_CACHE["nivel"]
+
+
+def _inimigo(ex, dia=None, nivel=None):
+    """Inimigo da quest. Durante a batalha a sessao ainda nao conta no jogo,
+    entao o nivel e o de antes dela, o mesmo que o historico usa."""
     try:
-        return jogo.inimigo_do_exercicio(db_ops.get_muscle_groups(ex["name"]))
+        return jogo.inimigo_do_exercicio(
+            db_ops.get_muscle_groups(ex["name"]), ex["name"], dia,
+            nivel if nivel is not None else _nivel_heroi(),
+        )
     except Exception:
         return jogo.INIMIGO_PADRAO
 
@@ -240,7 +261,7 @@ def _format_current_exercise(ex, exercises=None):
     if target is not None:
         footer.append("🎯 <i>Depois do golpe final, como foi?</i>")
     else:
-        footer.append("Carga alvo ainda não definida. Envie a carga total para este exercício.")
+        footer.append("❔ Primeiro encontro com este inimigo: ainda não há carga alvo. Envie a carga total que você usou (ex.: <code>40 8</code>).")
     return "\n\n".join([header, "\n".join(body), "\n".join(footer)])
 
 
@@ -258,19 +279,19 @@ def _format_exercise_line(idx, ex):
     rest = ex.get("rest_interval", "2 min")
     display_name = _display_exercise_name(ex["name"])
     return (
-        f"{idx}. <b>{display_name}</b>\n"
-            f"   {ex['sets']}x{ex['reps']} | alvo: {target}kg | descanso: {rest}"
+        f"{idx}. <b>{escape(display_name)}</b> — 👹 {escape(_inimigo(ex))}\n"
+        f"   {ex['sets']} golpes de {ex['reps']} · {target} kg · ⏳ {rest}"
     )
 
 
 def _format_training_msg(exercises):
-    lines = [f"🔮 <b>Treino de hoje — {len(exercises)} exercícios</b>"]
+    lines = [f"🔮 <b>VISÃO DO ORÁCULO</b> · treino de hoje, {len(exercises)} quests"]
     lines.extend(_format_exercise_line(idx, ex) for idx, ex in enumerate(exercises, start=1))
     return "\n\n".join(lines)
 
 
 def _format_training_b_msg(exercises):
-    lines = ["10 voltas | descanso 60s no fim da volta"]
+    lines = ["🏚 <b>MISSÃO NA GARAGEM</b> · Treino B\n🔁 10 rodadas · ⏳ 60 s de descanso ao fim de cada rodada"]
     for idx, ex in enumerate(exercises, start=1):
         target = ex.get("target_weight")
         weight_line = (
@@ -279,8 +300,8 @@ def _format_training_b_msg(exercises):
             else f"peso: {_format_weight(target)}kg"
         )
         lines.append(
-            f"{idx}. <b>{ex['name']}</b>\n"
-            f"   {ex['work']} | {weight_line}"
+            f"⚔ {idx}. <b>{escape(ex['name'])}</b>\n"
+            f"   {ex['work']} · {weight_line}"
         )
         if ex.get("loading_note"):
             lines.append(f"   {ex['loading_note']}")
@@ -333,8 +354,8 @@ def _format_training_summary(session_id):
 def _format_exercises_msg(exercises):
     display_names = [_display_exercise_name(ex["name"]) for ex in exercises]
     name_width = max([22, *(len(name) for name in display_names)])
-    lines = ["<pre>Lista de exercicios\n"]
-    lines.append(f"{'#':>2} {'Exercicio':<{name_width}} {'S':>2} {'R':>3}\n")
+    lines = ["📋 <b>ARSENAL DO MAPA ATUAL</b>\n<pre>"]
+    lines.append(f"{'#':>2} {'Quest':<{name_width}} {'G':>2} {'R':>3}\n")
     lines.append("-" * (name_width + 12) + "\n")
     for idx, (ex, display_name) in enumerate(
         zip(exercises, display_names),
@@ -343,7 +364,7 @@ def _format_exercises_msg(exercises):
         lines.append(
             f"{idx:>2} {display_name:<{name_width}} {ex['sets']:>2} {ex['reps']:>3}\n"
         )
-    lines.append("</pre>")
+    lines.append("</pre>\n<i>G = golpes (séries) · R = repetições</i>")
     return "".join(lines)
 
 
@@ -443,22 +464,102 @@ def send_current_exercise(ex, exercises=None):
         send(texto, reply_markup=markup)
 
 
+def _linhas_quests(session, nivel=None):
+    """Uma linha por quest: exercicio, inimigo derrotado, carga e golpe."""
+    ids = [ex['log_id'] for ex in session['exercises']]
+    if not ids:
+        return []
+    with db_ops._connect() as conn:
+        rows = conn.execute(
+            f"SELECT id, weight, rpe FROM training_logs WHERE id IN ({','.join('?' * len(ids))})",
+            ids,
+        ).fetchall()
+    registros = {row['id']: row for row in rows}
+    try:
+        dia = date.fromisoformat(str(session.get('date', ''))[:10])
+    except ValueError:
+        dia = None
+    linhas = []
+    for ex in session['exercises']:
+        registro = registros.get(ex['log_id'])
+        inimigo = _inimigo(ex, dia, nivel)
+        carga =f"{_format_weight(registro['weight'])} kg" if registro and registro['weight'] else "-"
+        golpe = (
+            f" · {jogo.nome_do_golpe(registro['rpe']).replace('Golpe ', '')}"
+            if registro and registro['rpe'] is not None
+            else ""
+        )
+        linhas.append(
+            f"✅ {escape(_display_exercise_name(ex['name']))} — {escape(inimigo)} · {carga}{golpe}"
+        )
+    return linhas
+
+
+def _format_battle_report(session_id):
+    """Relatorio da batalha: os numeros do resumo com nomes de jogo."""
+    summary = db_ops.get_session_summary(session_id)
+    if summary is None:
+        return "Relatório indisponível."
+    linhas = ["📊 <b>RELATÓRIO</b>"]
+    linhas.append(f"💥 Dano total: <b>{summary['volume']:,.0f} kg</b> <i>(volume)</i>".replace(",", "."))
+    if summary["rpe_average"] is not None:
+        linhas.append(
+            f"🎯 Esforço médio: <b>RPE {summary['rpe_average']:.1f}</b>".replace(".", ",")
+        )
+    if summary["volume_delta"] is not None:
+        delta = summary["volume_delta"]
+        sinal = "+" if delta > 0 else ""
+        linhas.append(
+            f"📈 Contra a última batalha igual: <b>{sinal}{delta:,.0f} kg</b>".replace(",", ".")
+        )
+    if summary["increases"]:
+        linhas.append(f"⬆ Ficaram mais fortes: {_format_summary_names(summary['increases'])}")
+    if summary["consolidations"]:
+        linhas.append(
+            f"🧱 Dominados (mesma carga, menos esforço): {_format_summary_names(summary['consolidations'])}"
+        )
+    if summary["maintained_rpe9"]:
+        linhas.append(f"⚔ Firmes no RPE 9: {_format_summary_names(summary['maintained_rpe9'])}")
+    if summary["reductions"]:
+        linhas.append(f"🛡 Recuo tático (carga menor): {_format_summary_names(summary['reductions'])}")
+    if summary["records"]:
+        linhas.append(f"⭐ Recordes: {_format_summary_names(summary['records'])}")
+    return "\n".join(linhas)
+
+
 def send_completion(session):
     timing = db_ops.get_session_timing(session['session_id'])
-    lines = ["🏁 <b>TREINO CONCLUÍDO</b>"]
     start = datetime.fromisoformat(timing['started_at']) if timing.get('started_at') else None
     end = datetime.fromisoformat(timing['completed_at']) if timing.get('completed_at') else None
+    total = len(session['exercises'])
+    lines = ["🏆 <b>TREINO CONCLUÍDO · TODAS AS QUESTS VENCIDAS!</b>"]
+    quando = []
     if start:
-        lines.extend([f"Data: <b>{start:%d/%m/%Y}</b>", f"Início: <b>{start:%H:%M}</b>"])
+        quando.append(f"{start:%d/%m} · {start:%H:%M}")
     if end:
-        lines.append(f"Fim: <b>{end:%d/%m/%Y %H:%M}</b>")
+        quando.append(f"{end:%H:%M}")
+    tempo = " → ".join(quando)
     if start and end:
         minutes = max(0, int((end - start).total_seconds() // 60))
-        lines.append(f"Duração: <b>{minutes // 60}h{minutes % 60:02d}</b>")
-    total = len(session['exercises'])
-    lines.extend(["", f"Exercícios: <b>{total}/{total}</b>", "", _format_training_summary(session['session_id'])])
+        tempo += f" · Duração: <b>{minutes // 60}h{minutes % 60:02d}</b>"
+    if tempo:
+        lines.append(f"⏱ {tempo}")
+    lines.extend(["", f"📜 <b>QUESTS {total}/{total}</b>"])
+    try:
+        resultado = jogo.resultado_da_sessao(session['session_id'])
+    except Exception as exc:
+        LOGGER.error("Falha ao calcular EXP session_id=%s tipo=%s", session['session_id'], type(exc).__name__)
+        resultado = None
+    # Os inimigos da lista sao os mesmos da batalha: sorteados com o nivel de antes dela.
+    nivel_antes = resultado["antes"]["nivel"] if resultado else None
+    try:
+        lines.extend(_linhas_quests(session, nivel_antes))
+    except Exception as exc:
+        LOGGER.error("Falha ao listar quests tipo=%s", type(exc).__name__)
+    lines.extend(["", _format_battle_report(session['session_id'])])
     send("\n".join(lines), reply_markup=KEYBOARD_START)
-    send_victory(session['session_id'])
+    _NIVEL_CACHE["nivel"] = None
+    send_victory(session['session_id'], resultado)
 
 
 # --------------------------------------------------------------------------
@@ -486,6 +587,7 @@ MENU_JOGO = {
         ],
         [
             {"text": "🏪 Loja", "callback_data": "menu:loja"},
+            {"text": "📕 Bestiário", "callback_data": "menu:bestiario"},
             {"text": "🎮 Abrir app", "callback_data": "menu:app"},
         ],
     ]
@@ -610,10 +712,10 @@ def _animar_vitoria(resultado, texto_final):
         )
 
 
-def send_victory(session_id):
+def send_victory(session_id, resultado=None):
     """Envia a tela de vitoria do jogo; falha aqui nunca afeta o treino."""
     try:
-        resultado = jogo.resultado_da_sessao(session_id)
+        resultado = resultado or jogo.resultado_da_sessao(session_id)
     except Exception as exc:
         LOGGER.error("Falha ao calcular EXP session_id=%s tipo=%s", session_id, type(exc).__name__)
         return
@@ -623,10 +725,33 @@ def send_victory(session_id):
         _animar_vitoria(resultado, jogo.formatar_vitoria(resultado))
         send_image("render_vitoria", resultado)
         if jogo.subiu_de_nivel(resultado):
+            send_level_up_animation(resultado)
             send_level_up_sound()
         atualizar_hud(resultado["depois"])
     except Exception as exc:
         LOGGER.error("Falha na tela de vitoria session_id=%s tipo=%s", session_id, type(exc).__name__)
+
+
+def send_level_up_animation(resultado):
+    """GIF de LEVEL UP: o Telegram toca animacoes sozinho (som nao)."""
+    visual = _visual()
+    if visual is None or not hasattr(visual, "render_level_up_gif"):
+        return False
+    try:
+        antes, depois = resultado["antes"], resultado["depois"]
+        gif = visual.render_level_up_gif(
+            antes["nivel"], depois["nivel"], depois["classe_base"], depois["titulo"],
+            depois["titulo"] != antes["titulo"],
+        )
+    except Exception as exc:
+        LOGGER.error("Falha ao gerar GIF de level up tipo=%s", type(exc).__name__)
+        return False
+    ok, _ = telegram_call(
+        "sendAnimation",
+        {"chat_id": CHAT_ID, "caption": "✨ <b>LEVEL UP!</b> Toque no áudio abaixo para ouvir a fanfarra.", "parse_mode": "HTML"},
+        files={"animation": ("level_up.gif", gif, "image/gif")},
+    )
+    return ok
 
 
 def _link_app(estado):
@@ -706,6 +831,37 @@ def handle_pause(text):
     atualizar_hud()
 
 
+def handle_bestiary():
+    estado = jogo.estado_atual()
+    derrotados = estado.get("inimigos_derrotados", {})
+    send_image("render_bestiario", list(jogo.BASES_INIMIGOS), set(derrotados))
+    marcas = ("⚪", "🔴", "🟣", "🟡")
+    linhas = [
+        f"📕 <b>BESTIÁRIO</b> {len(derrotados)}/{len(jogo.TODOS_OS_INIMIGOS)}",
+        "<i>⚪ normal · 🔴 Elite · 🟣 Ancestral · 🟡 Lendário</i>",
+    ]
+    rotulos = {
+        "peito": "Peito", "pernas": "Pernas", "posterior": "Posterior", "costas": "Costas",
+        "ombros": "Ombros", "triceps": "Tríceps", "bracos": "Braços", "outros": "Outros",
+    }
+    for familia, nomes in jogo.FAMILIAS_INIMIGOS.items():
+        linhas.append(f"\n<b>{rotulos.get(familia, familia)}</b>")
+        for nome in nomes:
+            vistas = "".join(
+                marcas[i] if jogo.nome_com_tier(nome, i) in derrotados else "▫"
+                for i in range(len(jogo.TIERS))
+            )
+            visto = any(jogo.nome_com_tier(nome, i) in derrotados for i in range(len(jogo.TIERS)))
+            linhas.append(f"{vistas} {escape(nome) if visto else '???'}")
+    linhas.extend([
+        "",
+        f"<i>O inimigo de cada exercício muda a cada dia. Versões mais fortes "
+        f"aparecem no Lv {jogo.NIVEL_DO_TIER[1]} (Elite), {jogo.NIVEL_DO_TIER[2]} "
+        f"(Ancestral) e {jogo.NIVEL_DO_TIER[3]} (Lendário).</i>",
+    ])
+    send("\n".join(linhas))
+
+
 def handle_menu():
     send("📜 <b>MENU DO HERÓI</b>\nEscolha uma opção:", reply_markup=MENU_JOGO)
 
@@ -721,6 +877,7 @@ def handle_menu_callback(query, opcao):
         "diario": lambda: send(jogo.formatar_diario(jogo.estado_atual())),
         "loja": lambda: send(jogo.formatar_loja(jogo.estado_atual())),
         "app": handle_app,
+        "bestiario": handle_bestiary,
     }
     acao = acoes.get(opcao)
     if acao:
@@ -736,13 +893,13 @@ def handle_rpe_callback(query):
         return
     parts = query.get('data', '').split(':')
     if len(parts) != 3 or parts[0] != 'rpe' or parts[2] not in {'7', '8', '9', '10'}:
-        telegram_action('answerCallbackQuery', {'callback_query_id': query['id'], 'text': 'Botão de demonstração ou inválido.'})
+        telegram_action('answerCallbackQuery', {'callback_query_id': query['id'], 'text': 'Golpe de demonstração: nada foi registrado.'})
         return
     session = load_session()
     result = db_ops.registrar_rpe_botao(parts[1], int(parts[2])) if session else None
     telegram_action('answerCallbackQuery', {
         'callback_query_id': query['id'],
-        'text': 'Golpe registrado! ⚔' if result else 'Este botão já foi usado ou não é do exercício atual. Use /status.',
+        'text': 'Golpe registrado! ⚔' if result else 'Este golpe já foi usado ou não é da quest atual. Use /status.',
     })
     if not result:
         return
@@ -787,13 +944,13 @@ def handle_generate():
             "Falha ao gerar sessao tipo=%s",
             type(e).__name__,
         )
-        send(f"Erro ao gerar sessao de treino: {e}")
+        send(f"⚠ A batalha não pôde começar: {e}")
         return
 
     ods_ops.write_session(exercises, session_id)
 
     if not exercises:
-        send("O plano não tem exercícios. Consulte /planos.", reply_markup=KEYBOARD_START)
+        send("🗺 Este mapa está vazio: o plano não tem exercícios. Veja os mapas em /planos.", reply_markup=KEYBOARD_START)
         return
     start = datetime.fromisoformat(db_ops.get_session_timing(session_id)['started_at'])
     plano = (db_ops.get_active_training_plan() or {}).get("name", "")
@@ -817,12 +974,12 @@ def handle_preview():
             "Falha ao gerar previa tipo=%s",
             type(e).__name__,
         )
-        send(f"Erro ao gerar previa do treino: {e}")
+        send(f"⚠ A visão do oráculo falhou ao montar a prévia: {e}")
         return
 
     msg = _format_training_msg(exercises)
     send(msg)
-    send("Previa do treino. Nada foi salvo. Use /gerar para iniciar uma sessao real.")
+    send("🔮 Isto é só uma visão: nada foi gravado. Para lutar de verdade, toque em ⚔ Iniciar treino.")
 
 
 def handle_training_b():
@@ -833,7 +990,7 @@ def handle_training_b():
             "Falha ao gerar treino B tipo=%s",
             type(e).__name__,
         )
-        send(f"Erro ao gerar treino B: {e}")
+        send(f"⚠ A missão da garagem (Treino B) não pôde ser montada: {e}")
         return
 
     send(_format_training_b_msg(exercises))
@@ -845,7 +1002,7 @@ def handle_exercises():
         send(_format_exercises_msg(exercises))
     except Exception as exc:
         LOGGER.error("Falha ao listar exercicios tipo=%s", type(exc).__name__)
-        send("Erro ao listar exercicios. Consulte o terminal.")
+        send("⚠ Não consegui abrir o arsenal (lista de exercícios). Veja o terminal.")
 
 
 def handle_volume():
@@ -859,30 +1016,30 @@ def handle_volume():
             for muscle in muscles:
                 muscle_sets[muscle] = muscle_sets.get(muscle, 0) + ex["sets"]
         lines = [
-            "📊 <b>Volume por musculo</b>\n",
-            "<i>series/sessao → series/semana (~3.5x)</i>\n",
+            "📊 <b>TREINO DE CADA MÚSCULO</b>\n",
+            "<i>golpes por batalha → por semana (~3,5 batalhas)</i>\n",
         ]
         for muscle, sets in sorted(muscle_sets.items()):
             weekly = round(sets * 3.5, 1)
-            lines.append(f"{muscle}: <b>{sets}</b> → ~{weekly:.0f}/sem")
+            lines.append(f"⚔ {muscle}: <b>{sets}</b> → ~{weekly:.0f}/sem")
         send("\n".join(lines))
     except Exception as exc:
         LOGGER.error("Falha ao calcular volume tipo=%s", type(exc).__name__)
-        send("Erro ao calcular volume. Consulte o terminal.")
+        send("⚠ Não consegui calcular o treino por músculo. Veja o terminal.")
 
 
 def handle_plans():
     plans = db_ops.list_training_plans()
     if not plans:
-        send("Nenhum plano de treino cadastrado.")
+        send("🗺 Nenhum mapa de treino cadastrado.")
         return
-    lines = ["🗺 <b>Planos de treino</b>"]
+    lines = ["🗺 <b>MAPAS DE TREINO</b>"]
     for plan in plans:
-        marker = " ✓ ativo" if plan["active"] else ""
+        marker = " ⭐ <b>mapa atual</b>" if plan["active"] else ""
         lines.append(
-            f"{plan['name']}: {plan['exercise_count']} exercicios{marker}"
+            f"📍 {plan['name']}: {plan['exercise_count']} quests{marker}"
         )
-    lines.append("\nUse <code>/plano NOME</code> para selecionar.")
+    lines.append("\nPara trocar de mapa: <code>/plano NOME</code>.")
     send("\n".join(lines))
 
 
@@ -893,9 +1050,9 @@ def handle_select_plan(text):
         return
     name = parts[1].strip()
     if db_ops.set_active_training_plan(name):
-        send(f"Plano ativo: <b>{name}</b>.")
+        send(f"🗺 Mapa escolhido: <b>{escape(name)}</b>. A próxima batalha segue este caminho.")
     else:
-        send(f"Plano nao encontrado ou vazio: <b>{name}</b>.")
+        send(f"⚠ Mapa não encontrado ou sem quests: <b>{escape(name)}</b>. Veja os mapas em /planos.")
 
 
 def handle_dashboard():
@@ -904,32 +1061,32 @@ def handle_dashboard():
         data = dashboard.carregar_dados()
         summary = data["resumo"]
         updated_at = datetime.now().strftime("%d/%m/%Y %H:%M")
-        lines = [f"Dashboard atualizado em <b>{updated_at}</b>."]
+        lines = [f"📈 <b>CRÔNICA ATUALIZADA</b> (dashboard) em <b>{updated_at}</b>."]
         if summary["sessoes"]:
             lines.extend(
                 [
-                    f"Ultima sessao: <b>{summary['ultima_data']}</b>",
-                    f"Volume: <b>{summary['ultimo_volume']:,.0f} kg</b>".replace(
+                    f"⚔ Última batalha: <b>{summary['ultima_data']}</b>",
+                    f"💥 Dano: <b>{summary['ultimo_volume']:,.0f} kg</b>".replace(
                         ",", "."
                     ),
                 ]
             )
             if summary["rpe_medio"] is not None:
                 lines.append(
-                    f"RPE medio geral: <b>{summary['rpe_medio']:.1f}</b>".replace(
+                    f"🎯 Esforço médio geral: <b>RPE {summary['rpe_medio']:.1f}</b>".replace(
                         ".", ","
                     )
                 )
         else:
-            lines.append("Ainda nao existem sessoes preenchidas.")
+            lines.append("Nenhuma batalha registrada ainda.")
         send("\n".join(lines))
     except Exception as exc:
         LOGGER.error("Falha ao atualizar dashboard tipo=%s", type(exc).__name__)
-        send("Erro ao atualizar o dashboard. Consulte o terminal.")
+        send("⚠ Não consegui atualizar a crônica (dashboard). Veja o terminal.")
 
 
 def _format_diet_meal(meal, items):
-    lines = [f"<b>{escape(meal)}</b>"]
+    lines = [f"🍽 <b>{escape(meal)}</b>"]
     lines.extend(
         f"• {escape(item['name'])} — {dashboard._fmt_quantidade(item['quantity'], item['unit'])}"
         for item in items
@@ -953,14 +1110,14 @@ def _format_diet_macro_line(label, key, unit, totals, targets, casas=0):
 def handle_diet():
     entries = db_ops.list_diet_entries()
     if not entries:
-        send("Nenhum alimento cadastrado na dieta atual.")
+        send("🍖 Nenhuma provisão cadastrada na dieta atual.")
         return
 
     meals = {}
     for entry in entries:
         meals.setdefault(entry["meal"], []).append(entry)
 
-    lines = ["🍖 <b>DIETA ATUAL</b>"]
+    lines = ["🍖 <b>PROVISÕES DO DIA</b> (dieta)"]
     for meal, items in meals.items():
         lines.append("")
         lines.append(_format_diet_meal(meal, items))
@@ -970,10 +1127,11 @@ def handle_diet():
     targets = totals_and_targets["targets"] or {}
 
     lines.append("")
-    lines.append(_format_diet_macro_line("Calorias", "calories", "kcal", totals, targets))
-    lines.append(_format_diet_macro_line("Proteína", "protein_g", "g", totals, targets))
-    lines.append(_format_diet_macro_line("Carboidrato", "carbo_g", "g", totals, targets))
-    lines.append(_format_diet_macro_line("Gordura", "fat_g", "g", totals, targets))
+    lines.append("🧪 <b>Energia do dia</b>")
+    lines.append(_format_diet_macro_line("🔥 Calorias", "calories", "kcal", totals, targets))
+    lines.append(_format_diet_macro_line("🥩 Proteína", "protein_g", "g", totals, targets))
+    lines.append(_format_diet_macro_line("🍞 Carboidrato", "carbo_g", "g", totals, targets))
+    lines.append(_format_diet_macro_line("🧈 Gordura", "fat_g", "g", totals, targets))
     send("\n".join(lines))
 
 
@@ -984,32 +1142,33 @@ def handle_weight(text):
             weight = float(parts[1].strip().replace(",", "."))
             entry = db_ops.add_body_weight(weight)
         except ValueError as exc:
-            send(f"{exc}\nUse <code>/peso 118,5</code>.")
+            send(f"⚠ {exc}\nUse <code>/peso 118,5</code>.")
             return
         send(
-            f"📏 Peso registrado: <b>{_format_body_weight(entry['weight_kg'])} kg</b>."
+            f"📏 <b>Atributo atualizado:</b> peso <b>{_format_body_weight(entry['weight_kg'])} kg</b>. "
+            "Os chefes recalculam a força relativa com ele."
         )
         return
 
     history = db_ops.list_body_weights(limit=5)
     if not history:
-        send("Nenhum peso registrado. Use <code>/peso 118,5</code>.")
+        send("📏 Nenhum peso registrado ainda. Use <code>/peso 118,5</code>.")
         return
 
     latest = history[0]
     lines = [
-        "📏 <b>Peso corporal</b>",
+        "📏 <b>PESO DO HERÓI</b>",
         f"Atual: <b>{_format_body_weight(latest['weight_kg'])} kg</b>",
-        f"Registrado em: {_format_weight_date(latest['recorded_at'])}",
+        f"Medido em: {_format_weight_date(latest['recorded_at'])}",
     ]
     if len(history) > 1:
         delta = latest["weight_kg"] - history[1]["weight_kg"]
         signal = "+" if delta > 0 else ""
         lines.append(
-            f"Desde a medicao anterior: "
+            f"Desde a medição anterior: "
             f"<b>{signal}{_format_body_weight(delta)} kg</b>"
         )
-    lines.append("\n<b>Ultimas medicoes</b>")
+    lines.append("\n📜 <b>Últimas medições</b>")
     lines.extend(
         f"{_format_weight_date(item['recorded_at'])}: "
         f"{_format_body_weight(item['weight_kg'])} kg"
@@ -1025,33 +1184,33 @@ def handle_waist(text):
             circumference = float(parts[1].strip().replace(",", "."))
             entry = db_ops.add_waist_measurement(circumference)
         except ValueError as exc:
-            send(f"{exc}\nUse <code>/cintura 110,5</code>.")
+            send(f"⚠ {exc}\nUse <code>/cintura 110,5</code>.")
             return
         send(
-            "📏 Cintura registrada: "
+            "📏 <b>Atributo atualizado:</b> cintura "
             f"<b>{_format_body_weight(entry['circumference_cm'])} cm</b>."
         )
         return
 
     history = db_ops.list_waist_measurements(limit=5)
     if not history:
-        send("Nenhuma medida de cintura registrada. Use <code>/cintura 110,5</code>.")
+        send("📏 Nenhuma medida de cintura registrada ainda. Use <code>/cintura 110,5</code>.")
         return
 
     latest = history[0]
     lines = [
-        "📏 <b>Circunferencia da cintura</b>",
+        "📏 <b>CINTURA DO HERÓI</b>",
         f"Atual: <b>{_format_body_weight(latest['circumference_cm'])} cm</b>",
-        f"Registrada em: {_format_weight_date(latest['recorded_at'])}",
+        f"Medida em: {_format_weight_date(latest['recorded_at'])}",
     ]
     if len(history) > 1:
         delta = latest["circumference_cm"] - history[1]["circumference_cm"]
         signal = "+" if delta > 0 else ""
         lines.append(
-            f"Desde a medicao anterior: "
+            f"Desde a medição anterior: "
             f"<b>{signal}{_format_body_weight(delta)} cm</b>"
         )
-    lines.append("\n<b>Ultimas medicoes</b>")
+    lines.append("\n📜 <b>Últimas medições</b>")
     lines.extend(
         f"{_format_weight_date(item['recorded_at'])}: "
         f"{_format_body_weight(item['circumference_cm'])} cm"
@@ -1065,7 +1224,7 @@ def handle(text, session):
     exercises = session.get("exercises", [])
 
     if not exercises or "log_id" not in exercises[0]:
-        send("Formato de sessao antigo. Use /gerar para iniciar uma nova sessao de treino.")
+        send("⚠ Esta batalha foi salva num formato antigo. Toque em ⚔ Iniciar treino para começar outra.")
         return
 
     log_ids = [ex["log_id"] for ex in exercises]
@@ -1075,16 +1234,16 @@ def handle(text, session):
     if text.lower() == "/status":
         latest_weight = db_ops.get_latest_body_weight()
         weight_line = (
-            f"\nPeso atual: {_format_body_weight(latest_weight['weight_kg'])} kg"
+            f"\n📏 Peso atual: {_format_body_weight(latest_weight['weight_kg'])} kg"
             if latest_weight
             else ""
         )
         if filled >= total:
-            send(f"🏁 Treino completo. {total}/{total} ✓{weight_line}", reply_markup=KEYBOARD_START)
+            send(f"🏆 Todas as quests de hoje estão vencidas ({total}/{total}).{weight_line}", reply_markup=KEYBOARD_START)
         else:
             ex = exercises[filled]
             done = "\n".join(
-                f"✓ {_display_exercise_name(exercises[i]['name'])}"
+                f"✅ {_display_exercise_name(exercises[i]['name'])}"
                 for i in range(filled)
             )
             msg = f"⚔ Batalha em andamento — {filled}/{total} quests completas\n"
@@ -1097,7 +1256,7 @@ def handle(text, session):
 
     if text.lower() == "/desfazer":
         if filled == 0:
-            send("Nada para desfazer.")
+            send("↩ Nenhum turno para desfazer ainda.")
             return
         last_ex = exercises[filled - 1]
         db_ops.update_log_weight(last_ex["log_id"], None, None)
@@ -1106,7 +1265,7 @@ def handle(text, session):
         return
 
     if filled >= total:
-        send("O treino ja esta completo. Use /status.")
+        send("🏆 As quests de hoje já foram vencidas. Veja /status.")
         return
 
     parts = text.replace(",", ".").split()
@@ -1114,16 +1273,17 @@ def handle(text, session):
         weight = float(parts[0])
         rpe = int(parts[1]) if len(parts) > 1 else None
     except (ValueError, IndexError):
-        send("Formato: <code>80 8</code> (carga + RPE) ou <code>80</code> (somente carga)")
+        send("⚠ Golpe manual não entendido. Use <code>80 8</code> (carga + RPE) ou <code>80</code> (só a carga).")
         return
 
     ex = exercises[filled]
     db_ops.update_log_weight(ex["log_id"], weight, rpe)
     new_filled = filled + 1
 
-    rpe_str = f" RPE {rpe}" if rpe is not None else ""
+    rpe_str = f" · RPE {rpe} ({jogo.nome_do_golpe(rpe).lower()})" if rpe is not None else ""
     send(
-        f"<b>{escape(_display_exercise_name(ex['name']))}</b> ✓ {weight}kg{rpe_str} ({new_filled}/{total})"
+        f"✅ <b>Quest {new_filled}/{total} completa:</b> {escape(_display_exercise_name(ex['name']))}"
+        f" · {_format_weight(weight)} kg{rpe_str}"
     )
     if new_filled >= total:
         send_completion(session)
@@ -1167,7 +1327,7 @@ def main():
                         handle_rpe_callback(update['callback_query'])
                     except Exception as exc:
                         LOGGER.error("Falha no clique RPE tipo=%s", type(exc).__name__)
-                        send("Não foi possível concluir a ação. Use /status para continuar.")
+                        send("⚠ O golpe não foi registrado por um erro. Use /status para continuar.")
                     continue
                 msg = update.get("message", {})
                 chat_id = str(msg.get("chat", {}).get("id", ""))
@@ -1182,43 +1342,41 @@ def main():
 
                 if lower == "/ajuda":
                     send(
-                        "📜 <b>Menu do Limulus</b>\n\n"
-                        "/gerar — inicia ou retoma o treino\n"
-                        "/prever — mostra uma previa sem salvar\n"
-                        "/treinob — mostra o treino B de garagem\n"
-                        "/exercicios — lista os exercicios atuais\n"
-                        "/aquecimento — mostra o aquecimento\n"
-                        "/volume — volume por grupo muscular\n"
-                        "/dashboard — atualiza o dashboard local\n"
-                        "/dieta — mostra a dieta atual e as metas\n"
-                        "/planos — lista planos de treino\n"
-                        "/plano NOME — seleciona o plano ativo\n"
-                        "/peso VALOR — registra o peso corporal\n"
-                        "/peso — mostra o peso atual e o historico\n"
-                        "/cintura VALOR — registra a circunferencia em cm\n"
-                        "/cintura — mostra a cintura atual e o historico\n"
-                        "/status — exercicio atual e progresso\n"
-                        "/desfazer — apaga o ultimo registro\n"
-                        "/ajuda — esta mensagem\n\n"
-                        "<b>Jogo</b>\n"
+                        "📜 <b>GRIMÓRIO DE COMANDOS</b>\n\n"
+                        "⚔ <b>Batalha</b>\n"
+                        "/gerar ou ⚔ Iniciar treino — começa ou retoma a batalha\n"
+                        "/status — quests vencidas e a quest atual\n"
+                        "/desfazer — volta o último turno\n"
+                        "/prever — visão do oráculo (prévia, sem gravar)\n"
+                        "/treinob — missão na garagem (Treino B)\n"
+                        "/aquecimento — ritual de aquecimento\n\n"
+                        "🦸 <b>Herói</b>\n"
                         "/menu — menu do herói em botões\n"
-                        "/perfil — ficha: nivel, classe, atributos e ouro\n"
+                        "/perfil — ficha: nível, classe, atributos e ouro\n"
                         "/chefes — chefes de cada movimento e o HP restante\n"
                         "/semana — mapa da semana e missões\n"
                         "/missoes — missões da semana\n"
                         "/conquistas — conquistas desbloqueadas\n"
+                        "/bestiario — galeria dos inimigos enfrentados\n"
                         "/diario — diário de aventura\n"
                         "/loja — loja; <code>/loja coringa</code> compra\n"
                         "/pausa N — pausa de N dias; <code>/pausa fim</code> volta\n"
                         "/app — abre a ficha completa no app\n\n"
-                        "<b>Registrar treino:</b> toque no RPE abaixo do exercício.\n"
-                        "O botão usa a carga total indicada.\n\n"
-                        "<b>Registro manual, se necessário:</b>\n"
-                        "<code>80</code> — somente carga\n"
-                        "<code>80 8</code> — carga + RPE"
+                        "🗺 <b>Mapas e arsenal</b>\n"
+                        "/planos — mapas de treino\n"
+                        "/plano NOME — escolhe o mapa\n"
+                        "/exercicios — arsenal do mapa atual\n"
+                        "/volume — treino de cada músculo\n"
+                        "/dashboard — atualiza a crônica (dashboard)\n\n"
+                        "🍖 <b>Corpo e provisões</b>\n"
+                        "/dieta ou 🍖 Ver dieta — provisões do dia\n"
+                        "/peso VALOR — registra o peso · /peso — histórico\n"
+                        "/cintura VALOR — registra a cintura · /cintura — histórico\n\n"
+                        "🎯 <b>Golpe final:</b> toque no botão do golpe; ele grava a carga indicada e o RPE.\n"
+                        "<b>Golpe manual:</b> <code>80</code> (só carga) ou <code>80 8</code> (carga + RPE)"
                     )
                     if load_session() is None:
-                        send("Toque abaixo para iniciar.", reply_markup=KEYBOARD_START)
+                        send("⚔ Toque abaixo para começar a aventura.", reply_markup=KEYBOARD_START)
                     continue
 
                 comandos_jogo = {
@@ -1227,6 +1385,7 @@ def main():
                     "/semana": handle_week,
                     "/menu": handle_menu,
                     "/app": handle_app,
+                    "/bestiario": handle_bestiary,
                     "/missoes": lambda: send(jogo.formatar_missoes(jogo.estado_atual())),
                     "/conquistas": lambda: send(jogo.formatar_conquistas(jogo.estado_atual())),
                     "/diario": lambda: send(jogo.formatar_diario(jogo.estado_atual())),
@@ -1240,7 +1399,7 @@ def main():
                         acao_jogo()
                     except Exception as exc:
                         LOGGER.error("Falha no comando do jogo comando=%s tipo=%s", command, type(exc).__name__)
-                        send("Não foi possível concluir o comando do jogo. Consulte o terminal.")
+                        send("⚠ O comando do jogo falhou. Veja o terminal.")
                     continue
 
                 if lower == "/exercicios":
@@ -1273,8 +1432,8 @@ def main():
 
                 if lower == "/aquecimento":
                     send(
-                        "<b>Aquecimento</b>\n\n"
-                        "5 minutos, sem transformar em outro treino:\n\n"
+                        "🔥 <b>RITUAL DE AQUECIMENTO</b> · 5 min\n\n"
+                        "Prepare o herói sem gastar energia da batalha:\n\n"
                         "1. Marcha rapida ou polichinelo leve — 60s\n"
                         "2. Circulos de braco e abrir/fechar bracos — 30s\n"
                         "3. Rotacao de tronco — 30s\n"
@@ -1291,7 +1450,7 @@ def main():
                         handle_generate()
                     except Exception as exc:
                         LOGGER.error("Falha ao iniciar treino tipo=%s", type(exc).__name__)
-                        send("Não foi possível iniciar ou retomar o treino. Use /status para conferir a sessão.")
+                        send("⚠ Não consegui iniciar nem retomar a batalha. Use /status para conferir.")
                     continue
 
                 if lower == "/prever":
@@ -1307,7 +1466,7 @@ def main():
                         handle_diet()
                     except Exception as exc:
                         LOGGER.error("Falha ao mostrar dieta tipo=%s", type(exc).__name__)
-                        send("Não foi possível mostrar a dieta. Consulte o terminal.")
+                        send("⚠ Não consegui abrir as provisões (dieta). Veja o terminal.")
                     continue
 
                 if not _is_session_input(text):
@@ -1316,7 +1475,7 @@ def main():
                     except Exception:
                         sem_sessao = False
                     send(
-                        "Comando invalido. Use /ajuda.",
+                        "❓ Comando desconhecido. Veja o grimório de comandos em /ajuda.",
                         reply_markup=KEYBOARD_START if sem_sessao else None,
                     )
                     continue
@@ -1329,11 +1488,11 @@ def main():
                         command,
                         type(exc).__name__,
                     )
-                    send("Erro ao carregar a sessao. Consulte o terminal.")
+                    send("⚠ Não consegui carregar a batalha atual. Veja o terminal.")
                     continue
                 if session is None:
                     LOGGER.info("Comando sem sessao ativa comando=%s", command)
-                    send("Nenhuma sessão ativa. Toque em ⚔ Iniciar treino.", reply_markup=KEYBOARD_START)
+                    send("⚔ Nenhuma batalha em andamento. Toque em ⚔ Iniciar treino.", reply_markup=KEYBOARD_START)
                     continue
 
                 LOGGER.info(
@@ -1350,7 +1509,7 @@ def main():
                         session.get("session_id"),
                         type(exc).__name__,
                     )
-                    send("Erro ao processar o comando. Consulte o terminal.")
+                    send("⚠ O comando falhou por um erro. Veja o terminal.")
     except KeyboardInterrupt:
         LOGGER.info("Bot encerrado pelo usuario.")
 

@@ -12,12 +12,51 @@ Ele usa long polling pela API HTTP do Telegram. Nao ha webhook nem servidor web.
 
 O teclado "⚔ Iniciar treino" inicia ou retoma a sessao e desaparece enquanto ela
 esta ativa. O treino segue o formato de quest: cada exercicio e uma batalha
-contra um inimigo escolhido pelo grupo muscular principal do exercicio
-(`jogo.INIMIGOS_POR_GRUPO`). Peitoral enfrenta o Golem de Ferro; quadriceps e
-adutores, o Ogro da Montanha; posteriores e gluteos, a Serpente do Abismo;
-dorsais e trapezio, o Grifo Sombrio; deltoides, o Titã do Céu; triceps, o
-Diabrete Rúnico; biceps e antebraco, o Morcego de Ferro. Sem grupo mapeado, o
-inimigo e o Cogumelo Bravo (`jogo.INIMIGO_PADRAO`).
+contra um inimigo. O grupo muscular principal do exercicio define a familia
+(`jogo.FAMILIA_POR_GRUPO`), e cada uma das 8 familias de
+`jogo.FAMILIAS_INIMIGOS` tem 6 inimigos base, 48 ao todo:
+
+```text
+peito      Golem de Ferro, Tartaruga Bigorna, Cavaleiro Oco,
+           Rinoceronte Blindado, Muralha Viva, Caranguejo Couraçado
+pernas     Ogro da Montanha, Troll do Pântano, Javali Colossal,
+           Minotauro Rochoso, Elefante de Guerra, Gigante de Gelo
+posterior  Serpente do Abismo, Escorpião de Areia, Basilisco,
+           Centopeia Gigante, Serpe do Deserto, Naja Dourada
+costas     Grifo Sombrio, Harpia Uivante, Kraken Mirim,
+           Corvo Tempestuoso, Arraia Celeste, Mariposa Lunar
+ombros     Titã do Céu, Elemental da Tempestade, Gárgula de Pedra,
+           Fênix Cinzenta, Djinn do Vento, Águia de Trovão
+triceps    Diabrete Rúnico, Fogo-Fátuo, Esqueleto Arqueiro,
+           Duende Ladrão, Bruxa do Pântano, Lanterna Assombrada
+bracos     Morcego de Ferro, Lobo das Sombras, Aranha de Cristal,
+           Urso de Batalha, Louva-a-deus Lâmina, Macaco Rúnico
+outros     Cogumelo Bravo, Baú Mordedor, Planta Carnívora,
+           Pedra Falante, Fantasma Errante, Coruja Arcana
+```
+
+Cada base tem 4 tiers (`jogo.TIERS`), como as trocas de paleta dos JRPGs
+classicos, liberados pelo nivel do heroi (`jogo.NIVEL_DO_TIER`):
+
+```text
+comum      Lv 1    cores originais
+Elite      Lv 10   carmesim       "Golem de Ferro · Elite"
+Ancestral  Lv 25   violeta
+Lendário   Lv 45   dourado com aura de 1 px
+```
+
+Sao 48 x 4 = 192 inimigos (`jogo.TODOS_OS_INIMIGOS`).
+`jogo.inimigo_do_exercicio(grupos, exercicio, dia, nivel)` usa
+`zlib.crc32("data|exercicio")` para sortear a base da familia e o tier,
+uniforme entre os liberados; quando sai o maior liberado, ha 8%
+(`jogo.CHANCE_RARO`) de chance de vir o tier acima. O mesmo exercicio enfrenta
+o mesmo inimigo o dia todo (inclusive na retomada) e pode enfrentar outro no
+dia seguinte. O nivel usado e o de antes da sessao (`_nivel_heroi`, com cache
+de 60 s), porque a sessao em andamento ainda nao conta no jogo; a lista de
+quests da conclusao e o historico do jogo usam esse mesmo nivel, entao os
+nomes batem com os da batalha. A imagem de batalha e a de encontro mostram a
+etiqueta do tier (`etiqueta_tier`). Exercicio sem grupo mapeado cai na
+familia "outros".
 
 Ao iniciar, a mensagem "⚔ BATALHA INICIADA!" mostra o plano, o dia da semana,
 a data e a hora de Brasilia e quantas quests ha pela frente, seguida da imagem
@@ -66,9 +105,8 @@ quando a mensagem e foto, e o texto com `editMessageText` quando e texto.
 ```
 
 A EXP da quest e 10 x aderencia do RPE (`_format_quest_result`). Em seguida
-aparece a proxima quest. O resumo final
-(`🏁 TREINO CONCLUÍDO`, com `⭐ Recordes: ...`) mostra inicio, fim, duracao e os
-indicadores da sessao, e restaura o teclado inicial. Horarios ausentes em sessoes antigas sao omitidos.
+aparece a proxima quest. A mensagem final (ver "Conclusao Da Batalha") mostra
+as quests vencidas e o relatorio, e restaura o teclado inicial. Horarios ausentes em sessoes antigas sao omitidos.
 
 `/status` ("⚔ Batalha em andamento — i/n quests completas") recupera a quest atual com os botoes; `/ajuda` exibe o teclado inicial quando nao ha
 sessao. Entradas numericas permanecem disponiveis para ajustar a carga real
@@ -138,6 +176,7 @@ O bot so responde ao `CHAT_ID` configurado no codigo.
 /semana         mapa da semana e missoes
 /missoes        missoes da semana
 /conquistas     conquistas desbloqueadas
+/bestiario      galeria dos inimigos enfrentados (N/192)
 /diario         diario de aventura
 /loja           loja; /loja coringa compra um coringa extra
 /pausa N        pausa de N dias; /pausa fim volta
@@ -147,6 +186,28 @@ O bot so responde ao `CHAT_ID` configurado no codigo.
 
 Todos os comandos textuais exigem `/` e usam somente os nomes oficiais em
 PT-BR. Entradas numericas continuam reservadas para carga e RPE.
+
+Todos os textos do bot seguem o estilo JRPG, sem perder a informacao:
+
+```text
+/ajuda         📜 GRIMÓRIO DE COMANDOS, em secoes (Batalha, Herói,
+               Mapas e arsenal, Corpo e provisões)
+/prever        🔮 VISÃO DO ORÁCULO, com o inimigo de cada exercicio
+/treinob       🏚 MISSÃO NA GARAGEM
+/exercicios    📋 ARSENAL DO MAPA ATUAL
+/volume        📊 TREINO DE CADA MÚSCULO
+/planos        🗺 MAPAS DE TREINO (⭐ mapa atual); /plano: 🗺 Mapa escolhido
+/dashboard     📈 CRÔNICA ATUALIZADA (dashboard)
+/dieta         🍖 PROVISÕES DO DIA (dieta)
+/peso          📏 PESO DO HERÓI; registro: 📏 Atributo atualizado
+/cintura       📏 CINTURA DO HERÓI
+/aquecimento   🔥 RITUAL DE AQUECIMENTO
+```
+
+Erros comecam com ⚠ e continuam dizendo o motivo concreto e o que fazer, por
+exemplo `⚠ Golpe manual não entendido. Use 80 8 (carga + RPE) ou 80 (só a
+carga).` ou `⚠ Mapa não encontrado ou sem quests: NOME. Veja os mapas em
+/planos.`
 
 ## `/peso`
 
@@ -312,15 +373,16 @@ barra reta 2,20 m 11kg + 7kg de anilhas
 
 ## `/prever`
 
-Mostra o treino do plano ativo em lista, com a piramide do alvo (por exemplo
-`65→73→82kg`) e descanso, mas nao cria sessao real:
+Mostra o treino do plano ativo como "🔮 VISÃO DO ORÁCULO": uma linha por
+exercicio com o inimigo do dia e `3 golpes de 12 · 65→73→82 kg · ⏳ 2 min`, mas
+nao cria sessao real:
 
 ```text
 handle_preview()
   -> ods_ops.preview_training()
   -> _format_training_msg(exercises)
   -> send(texto do treino)
-  -> send("Previa do treino. Nada foi salvo...")
+  -> send("🔮 Isto é só uma visão: nada foi gravado...")
 ```
 
 Esse comando nao cria linhas em `training_sessions`, nao cria `training_logs` e
@@ -435,7 +497,8 @@ Carrega `session.json`, conta quantos logs tem carga e informa:
 - progresso atual ("⚔ Batalha em andamento — i/n quests completas")
 - exercicios ja feitos
 - a quest atual, reenviada com imagem, card e botoes de golpe
-- treino completo quando todos os logs estao preenchidos
+- "🏆 Todas as quests de hoje estão vencidas (n/n)" quando todos os logs
+  estao preenchidos
 
 ## `/desfazer`
 
@@ -444,8 +507,10 @@ Limpa o ultimo exercicio preenchido da sessao ativa.
 Se nada foi preenchido, responde:
 
 ```text
-Nada para desfazer.
+↩ Nenhum turno para desfazer ainda.
 ```
+
+Se havia, responde `↩ Turno desfeito: NOME` e reenvia a quest.
 
 ## Entrada De Carga
 
@@ -465,22 +530,44 @@ Regras:
 3. primeiro valor vira `float`
 4. segundo valor vira `int` se existir
 
+O registro responde `✅ Quest i/n completa: NOME · 80 kg · RPE 8 (golpe
+certeiro)` e envia a proxima quest.
+
 Entrada invalida recebe:
 
 ```text
-Formato: 80 8 (carga + RPE) ou 80 (somente carga)
+⚠ Golpe manual não entendido. Use 80 8 (carga + RPE) ou 80 (só a carga).
 ```
 
-### Resumo Ao Concluir
+### Conclusao Da Batalha
 
-Quando o ultimo exercicio recebe carga, a mesma resposta inclui:
+Quando o ultimo exercicio recebe carga, `send_completion` envia:
 
-- volume total e RPE medio
-- diferenca de volume para a sessao anterior compativel
-- aumentos e reducoes de carga
-- consolidacoes confirmadas
-- cargas mantidas em RPE 9
-- recordes de carga ou volume
+```text
+🏆 TREINO CONCLUÍDO · TODAS AS QUESTS VENCIDAS!
+⏱ 23/11 · 07:02 → 07:38 · Duração: 0h36
+
+📜 QUESTS 5/5
+✅ Supino reto — Golem de Ferro · 82 kg · certeiro
+...
+
+📊 RELATÓRIO
+💥 Dano total: 9.840 kg (volume)
+🎯 Esforço médio: RPE 8,4
+📈 Contra a última batalha igual: +320 kg
+⬆ Ficaram mais fortes: ...
+🧱 Dominados (mesma carga, menos esforço): ...
+⚔ Firmes no RPE 9: ...
+🛡 Recuo tático (carga menor): ...
+⭐ Recordes: ...
+```
+
+Cada linha ✅ (`_linhas_quests`) traz exercicio, inimigo (sorteado com o nivel
+de antes da sessao, o mesmo da batalha), carga e golpe. O
+relatorio (`_format_battle_report`) usa os numeros de
+`db_ops.get_session_summary`: volume total, RPE medio, diferenca de volume
+para a sessao anterior compativel, aumentos, consolidacoes, cargas mantidas
+em RPE 9, reducoes e recordes; linhas sem dado sao omitidas.
 
 Uma sessao e compativel para comparacao quando possui a mesma sequencia de
 exercicios preenchidos. Manter RPE 9 nao e chamado de consolidacao confirmada;
@@ -493,7 +580,8 @@ missoes, conquistas, chefes e atributos FOR/VIG/DIS); as imagens, em
 `limulus/jogo_visual.py` e `limulus/jogo_sprites.py`. Tudo e recalculado a
 partir do historico; falha no jogo so gera log e nunca interrompe o treino.
 
-Depois do resumo do treino, `send_victory` envia a tela de vitoria:
+Depois do resumo do treino, `send_victory(session_id, resultado)` envia a tela
+de vitoria, reaproveitando o `resultado_da_sessao` ja calculado na conclusao:
 
 1. uma mensagem com a barra de EXP enchendo em poucas edicoes da mesma
    mensagem (`PAUSA_ANIMACAO` = 0,35 s entre quadros), terminando no texto
@@ -502,8 +590,11 @@ Depois do resumo do treino, `send_victory` envia a tela de vitoria:
 2. em level up ou semana completa, a mensagem sai com o efeito de confete
    `EFEITO_FESTA`; se o Telegram recusar o efeito, sai sem ele;
 3. a imagem `render_vitoria` (janela de menu JRPG azul em pixel art);
-4. em level up, o som `limulus/assets/jogo/level_up.ogg` (fanfarra chiptune
-   original de 1,4 s) como mensagem de voz silenciosa;
+4. em level up, o GIF animado de LEVEL UP (`render_level_up_gif`, enviado por
+   `send_level_up_animation` com `sendAnimation`), que o Telegram toca
+   sozinho, e logo depois o som `limulus/assets/jogo/level_up.ogg` (fanfarra
+   chiptune original de 1,4 s) como mensagem de voz silenciosa. O Telegram nao
+   toca som automaticamente, entao a legenda do GIF pede para tocar o audio;
 5. a atualizacao do HUD: uma mensagem fixada no topo do chat com nivel,
    barra de EXP, mapa da semana, sequencia, coringas, ouro e atributos. O id
    fica em `jogo_estado` (chave `hud_mensagem`); se a edicao falhar, o bot
@@ -511,7 +602,16 @@ Depois do resumo do treino, `send_victory` envia a tela de vitoria:
 
 `/menu` e `/perfil` mostram o menu inline `MENU_JOGO`, cujos botoes usam
 callbacks `menu:perfil`, `menu:chefes`, `menu:semana`, `menu:missoes`,
-`menu:conquistas`, `menu:diario`, `menu:loja` e `menu:app`.
+`menu:conquistas`, `menu:bestiario`, `menu:diario`, `menu:loja` e `menu:app`.
+
+`/bestiario` (botao "📕 Bestiário") envia a galeria `render_bestiario`: grade
+6x8 com as 48 bases (uma familia por linha), cada celula nas cores do maior
+tier ja visto ou em silhueta "???", com 4 marcadores de tier, e cabecalho
+"X/48 espécies N/192". O texto lista cada familia com uma marca por tier
+(⚪ normal, 🔴 Elite, 🟣 Ancestral, 🟡 Lendário; ▫ ainda nao visto) e o total
+N/192 (`estado["inimigos_derrotados"]`). Conquistas: `bestiario_12` (12
+diferentes), `bestiario_24` "Domador de feras" (24), `bestiario_lendario`
+(um Lendário) e `bestiario_completo` (os 192).
 
 ### Mini App
 
@@ -578,7 +678,8 @@ Chat ID errado:
 `session.json` ausente:
 
 - o bot recupera a sessao SQLite mais recente com logs pendentes
-- sem sessao incompleta, responde `Nenhuma sessao ativa. Use /gerar.`
+- sem sessao incompleta, responde `⚔ Nenhuma batalha em andamento. Toque em
+  ⚔ Iniciar treino.`
 
 SQLite travado:
 

@@ -123,17 +123,38 @@ Comandos principais em PT-BR:
   teclado antigo no celular seja substituido. Enviam "⚔ BATALHA
   INICIADA!", a imagem de encontro e a primeira quest (formato abaixo).
 - Formato de quest (tom JRPG): cada exercicio do treino e uma quest contra um
-  inimigo escolhido pelo grupo muscular principal do exercicio
-  (`jogo.INIMIGOS_POR_GRUPO`, via `jogo.inimigo_do_exercicio`; sem grupo
-  mapeado, `jogo.INIMIGO_PADRAO` = Cogumelo Bravo). Inicio "⚔ BATALHA
+  inimigo da familia do grupo muscular principal do exercicio
+  (`jogo.FAMILIA_POR_GRUPO` -> `jogo.FAMILIAS_INIMIGOS`, 6 inimigos base por
+  familia, 48 bases em 4 tiers = 192 inimigos);
+  `jogo.inimigo_do_exercicio(grupos, exercicio, dia, nivel)` sorteia a base e o
+  tier por `zlib.crc32("data|exercicio")`, estavel no dia e diferente de um
+  dia para o outro; o tier sai entre os liberados pelo nivel do heroi (antes
+  da sessao, via `_nivel_heroi`, com cache de 60 s), com 8% de chance de um
+  acima; sem grupo mapeado, familia "outros". Inicio "⚔ BATALHA
   INICIADA!" com plano, dia da semana (`jogo.DIAS_SEMANA_LONGOS`), data, hora e
   numero de quests, seguido da imagem `render_encontro` com a fila de inimigos;
   retomada "⚔ Batalha em andamento — quest i/n"; `/status` "⚔ Batalha em
-  andamento — i/n quests completas" ou "🏁 Treino completo."; `/desfazer`
-  "↩ Turno desfeito: NOME"; conclusao "🏁 TREINO CONCLUÍDO" com
-  "⭐ Recordes: ..."; `/prever` "🔮 Treino de hoje — N exercícios"; `/ajuda`
-  "📜 Menu do Limulus"; `/volume` 📊, `/planos` 🗺, `/dieta` "🍖 DIETA ATUAL",
-  `/peso` e `/cintura` 📏.
+  andamento — i/n quests completas" ou "🏆 Todas as quests de hoje estão
+  vencidas"; `/desfazer` "↩ Turno desfeito: NOME". Todos os textos do bot
+  seguem o estilo JRPG: `/ajuda` e o "📜 GRIMÓRIO DE COMANDOS" em secoes
+  (Batalha, Herói, Mapas e arsenal, Corpo e provisões); `/prever` "🔮 VISÃO DO
+  ORÁCULO" (com o inimigo de cada exercicio); `/treinob` "🏚 MISSÃO NA
+  GARAGEM"; `/exercicios` "📋 ARSENAL DO MAPA ATUAL"; `/volume` "📊 TREINO DE
+  CADA MÚSCULO"; `/planos` "🗺 MAPAS DE TREINO" e `/plano` "🗺 Mapa
+  escolhido"; `/dashboard` "📈 CRÔNICA ATUALIZADA"; `/dieta` "🍖 PROVISÕES DO
+  DIA"; `/peso` e `/cintura` "📏 PESO DO HERÓI" e "📏 CINTURA DO HERÓI";
+  `/aquecimento` "🔥 RITUAL DE AQUECIMENTO". Erros comecam com ⚠ e continuam
+  dizendo o motivo concreto (por exemplo "⚠ Golpe manual não entendido. Use
+  80 8...").
+- Conclusao (`send_completion`): "🏆 TREINO CONCLUÍDO · TODAS AS QUESTS
+  VENCIDAS!" com inicio, fim e duracao; "📜 QUESTS n/n" com uma linha ✅ por
+  quest (exercicio, inimigo com o tier sorteado com o nivel de antes da
+  sessao, carga e golpe, `_linhas_quests`); e o
+  "📊 RELATÓRIO" (`_format_battle_report`, numeros de
+  `db_ops.get_session_summary`): Dano total (volume), Esforço médio (RPE
+  medio), Contra a última batalha igual (diferenca de volume para a sessao
+  compativel), Ficaram mais fortes (aumentos), Dominados (consolidacoes),
+  Firmes no RPE 9, Recuo tático (reducoes) e Recordes.
 - Cada quest (`send_current_exercise(ex, exercises)`) sai como foto da tela de
   batalha (`jogo_visual.render_batalha`; o `file_id` fica em `_CACHE_BATALHA`
   para reenviar a mesma tela na hora) com o card na legenda (`_send_batalha`);
@@ -150,7 +171,7 @@ Comandos principais em PT-BR:
   edita a legenda (`editMessageCaption`, quando a mensagem e foto) ou o texto
   (`editMessageText`) com "💥 <Golpe>! X kg · RPE n" e "✅ Quest completa:
   <inimigo> derrotado! +N EXP" (`_format_quest_result`; EXP = 10 x aderencia do
-  RPE). A lista de `/prever` continua em texto, com o alvo como `65→73→82kg`.
+  RPE). A lista de `/prever` continua em texto: `3 golpes de 12 · 65→73→82 kg · ⏳ 2 min`.
 - `/prever` mostra o treino em texto sem salvar sessao ou logs.
 - `/treinob` mostra o Treino B de garagem com pesos calculados pelos alvos de
   Terra Romeno e Remada curvada lidos do historico, sem criar sessao ou logs.
@@ -170,8 +191,8 @@ Comandos principais em PT-BR:
 - `/desfazer` limpa o ultimo exercicio registrado.
 - Comandos do jogo (ver `limulus/jogo.py`): `/menu` abre o menu em botoes;
   `/perfil` mostra a ficha (imagem e texto: nivel, classe, atributos, ouro,
-  sequencia e coringas); `/chefes`, `/semana`, `/missoes`, `/conquistas` e
-  `/diario`; `/loja` e `/loja coringa`; `/pausa N` e `/pausa fim`; `/app`
+  sequencia e coringas); `/chefes`, `/semana`, `/missoes`, `/conquistas`,
+  `/bestiario` e `/diario`; `/loja` e `/loja coringa`; `/pausa N` e `/pausa fim`; `/app`
   abre o Mini App.
 - `/ajuda` lista comandos.
 - `80` ou `80 8` registra carga e RPE opcional.
@@ -181,9 +202,8 @@ Comandos principais em PT-BR:
 - Ao carregar, `session.json` e validado contra o SQLite. Arquivo ausente,
   corrompido ou antigo e reconstruido pela sessao mais recente com logs
   pendentes; sessoes completas nao sao reabertas.
-- O ultimo registro da sessao gera resumo automatico com volume, RPE medio,
-  comparacao compativel, mudancas de carga, consolidacoes, cargas mantidas em
-  RPE 9 e recordes.
+- O ultimo registro da sessao gera a mensagem de conclusao com as quests
+  vencidas e o "📊 RELATÓRIO" (formato acima).
 - `/gerar`, `/prever`, `/exercicios` e `/volume` usam o plano ativo no SQLite.
 - `/treinob` nao registra RPE; farmer walk usa 45% do Terra Romeno,
   remada leve com barra usa 60% da remada curvada. Os alvos vem do historico
@@ -223,8 +243,8 @@ declaradas) e `jogo_estado` (chave/valor, por exemplo `hud_mensagem`).
 - Missoes: 3 por semana em rodizio fixo pela data (`MISSOES`); premiam
   qualidade (RPE registrado, sessao inteira no RPE 8-9, recorde com RPE ate 9,
   constancia), nunca "fazer mais".
-- Conquistas: lista fixa em `CONQUISTAS`, cada uma com a data da sessao que a
-  desbloqueou.
+- Conquistas: lista fixa em `CONQUISTAS` (inclui o bestiario: 12, 24 e 192
+  inimigos diferentes e um Lendário), cada uma com a data da sessao que a desbloqueou.
 - Chefes (`PADROES`): um por padrao de movimento (Empurrar, Agachar, Quadril,
   Puxar, Ombro), com ranks Ferro, Bronze, Prata, Ouro, Platina e Diamante pela
   razao 1RM estimado (Epley) / peso corporal. Os limites sao aproximacoes de
@@ -236,10 +256,24 @@ declaradas) e `jogo_estado` (chave/valor, por exemplo `hud_mensagem`).
   Classe pelo atributo dominante (FOR Guerreiro, VIG Barbaro, DIS Monge), com
   nome que evolui nos niveis 10 e 30.
 - Diario: uma linha por sessao (ultimas 30 no estado).
-- Quests do treino: `INIMIGOS_POR_GRUPO` liga o grupo muscular principal do
-  exercicio a um inimigo (os cinco chefes mais Diabrete Rúnico para triceps e
-  Morcego de Ferro para biceps e antebraco); `inimigo_do_exercicio(grupos)`
-  devolve `INIMIGO_PADRAO` (Cogumelo Bravo) sem grupo mapeado. `GOLPES_RPE`
+- Quests do treino: `FAMILIAS_INIMIGOS` tem 8 familias de 6 inimigos base
+  (peito, pernas, posterior, costas, ombros, triceps, bracos e outros; 48 em
+  `BASES_INIMIGOS`). Cada base tem 4 tiers (`TIERS`: comum, Elite,
+  Ancestral, Lendário), liberados nos niveis `NIVEL_DO_TIER` = 1, 10, 25 e
+  45; `TODOS_OS_INIMIGOS` sao os 192 nomes com tier (`nome_com_tier` gera
+  "Golem de Ferro · Elite", `separar_tier` desfaz, `tier_maximo(nivel)` diz
+  o maior liberado). `FAMILIA_POR_GRUPO` liga o grupo muscular a familia e
+  `familia_do_exercicio(grupos)` escolhe pelo grupo principal (sem grupo
+  mapeado, "outros"). `inimigo_do_exercicio(grupos, exercicio, dia, nivel)`
+  sorteia por `zlib.crc32("data|exercicio")` a base e o tier, uniforme entre
+  os liberados, com `CHANCE_RARO` = 8% de vir um tier acima quando sai o
+  maior liberado. O historico sorteia cada sessao com o nivel de antes dela,
+  igual a batalha. `estado["inimigos_derrotados"]` conta cada nome com tier
+  enfrentado. Conquistas do bestiario (tambem no catalogo de
+  `docs/app/index.html`): `bestiario_12` (12 diferentes), `bestiario_24`
+  "Domador de feras" (24 diferentes), `bestiario_lendario` (um Lendário) e
+  `bestiario_completo` (os 192).
+  `GOLPES_RPE`
   define os botoes de golpe (rotulo, valor gravado, nome do golpe),
   `nome_do_golpe(rpe)` o nome usado na confirmacao e `DIAS_SEMANA_LONGOS` o
   dia da mensagem de inicio.
@@ -260,11 +294,19 @@ Falha no calculo do jogo so gera log e nunca interrompe o treino. Testes:
 Telas do jogo em PNG com Pillow, no estilo de janela de menu JRPG azul
 classica: `render_ficha`, `render_vitoria`, `render_chefes`,
 `render_semana`, `render_batalha` (cena da quest: inimigo a esquerda, heroi a
-direita, sem cargas na imagem) e `render_encontro` (fila de inimigos do
-treino), desenhadas em 320 px de largura e ampliadas por vizinho mais
-proximo. `jogo_sprites.py` guarda a pixel art original (herois por classe e
-estagio, cinco chefes, tres monstros menores, Diabrete Rúnico, Morcego de
-Ferro e Cogumelo Bravo, via `sprite_do_inimigo`, e icones) e uma fonte bitmap propria, porque a fonte
+direita, sem cargas na imagem), `render_encontro` (fila de inimigos do
+treino), ambas com a etiqueta do tier (`etiqueta_tier`), e
+`render_bestiario` (grade 6x8 das 48 bases, uma familia por linha, cada
+celula nas cores do maior tier visto ou em silhueta "???", com 4 marcadores
+de tier e cabecalho "X/48 espécies N/192"), desenhadas em 320 px de
+largura e ampliadas por vizinho mais proximo. `render_level_up_gif` gera um
+GIF animado de LEVEL UP (16 quadros, cerca de 2 s, em loop, 480 px), que o
+Telegram toca sozinho. `jogo_sprites.py` guarda a pixel art original (herois
+por classe e estagio, as 48 bases de inimigo em `BASES_INIMIGOS` via
+`sprite_do_inimigo`, e icones). Os tiers sao troca de paleta programatica
+(`paleta_do_tier`): Elite carmesim, Ancestral violeta e Lendário dourado com
+aura de 1 px. Atencao: `jogo_sprites.TODOS_OS_INIMIGOS` e alias das 48
+bases, enquanto `jogo.TODOS_OS_INIMIGOS` sao os 192 nomes com tier e uma fonte bitmap propria, porque a fonte
 `load_default` do Pillow nao tem os acentos do portugues; os acentos sao
 compostos pela decomposicao NFD. `pillow` esta em `requirements.txt`; sem ele
 o bot segue so em texto. `LIMULUS_AMOSTRAS=<pasta> python
@@ -272,16 +314,24 @@ tests/jogo_visual_test.py` grava PNGs de amostra para conferir o visual.
 
 ### Jogo no Telegram e Mini App
 
-- Ao concluir o treino, `send_victory` envia a tela de vitoria depois do
+- Ao concluir o treino, `send_victory(session_id, resultado=None)` (reusa o
+  `resultado_da_sessao` ja calculado pela conclusao) envia a tela de vitoria
+  depois do
   resumo: a barra de EXP enche por edicoes da mesma mensagem
   (`PAUSA_ANIMACAO` = 0,35 s), com efeito de confete `EFEITO_FESTA` em level
   up ou semana completa (sem o efeito se o Telegram recusar); depois envia a
-  imagem `render_vitoria`, o som `limulus/assets/jogo/level_up.ogg` como voz
-  no level up (fanfarra chiptune original de 1,4 s, gerada para o projeto) e
+  imagem `render_vitoria`; no level up, o GIF `render_level_up_gif` por
+  `send_level_up_animation` (`sendAnimation`, toca sozinho) e depois o som
+  `limulus/assets/jogo/level_up.ogg` como voz (fanfarra chiptune original de
+  1,4 s; o Telegram nao toca som sozinho, por isso a legenda do GIF pede
+  para tocar o audio); e
   atualiza o HUD fixado (`atualizar_hud`, id em `jogo_estado.hud_mensagem`).
 - Comandos do jogo: `/menu` (menu inline `MENU_JOGO`, callbacks `menu:*`),
-  `/perfil`, `/chefes`, `/semana`, `/missoes`, `/conquistas`, `/diario`,
-  `/loja` e `/loja coringa`, `/pausa N` e `/pausa fim`, `/app`.
+  `/perfil`, `/chefes`, `/semana`, `/missoes`, `/conquistas`, `/bestiario`
+  (galeria `render_bestiario` e lista por familia com ⚪🔴🟣🟡 por tier e
+  total N/192, botao
+  "📕 Bestiário" `menu:bestiario`), `/diario`, `/loja` e `/loja coringa`,
+  `/pausa N` e `/pausa fim`, `/app`.
 - Todas as chamadas de rede do jogo (texto com efeito, fotos, voz, edicoes,
   fixar mensagem) passam por `telegram_poller.telegram_call(method, payload,
   files=None)`, que devolve `(ok, resultado)`. Testes devem substituir

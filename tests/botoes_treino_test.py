@@ -48,7 +48,8 @@ def main():
             assert 'BATALHA INICIADA!' in messages[0][0] and 'quests</b> pela frente' in messages[0][0]
             assert 'Treino de hoje' not in messages[0][0]
             text, kwargs = messages[-1]
-            assert 'QUEST 1/' in text and 'SUPINO RETO</b>\n👹 Derrote o <b>Golem de Ferro</b>!' in text
+            assert 'QUEST 1/' in text and 'SUPINO RETO</b>\n👹 Derrote o <b>' in text
+            assert any(f'Derrote o <b>{nome}' in text for nome in bot.jogo.FAMILIAS_INIMIGOS['peito'])
             assert '⚔ Golpe 1 · <b>54 kg</b> de anilhas <i>(total 65 kg)</i>\n⚔ Golpe 2 · <b>62 kg</b> de anilhas <i>(total 73 kg)</i>\n🎯 Golpe final · <b>71 kg</b> de anilhas <i>(total 82 kg)</i>' in text
             assert '📜 Objetivo: <b>3 golpes de 12 repetições</b>' in text and 'QUEST 1/' in text and '👹 Derrote o' in text
             assert '🏋 Barra 2,20 m · 11 kg' in text
@@ -93,8 +94,10 @@ def main():
             assert 'VITÓRIA' in messages[-1][0]
             assert 'TREINO CONCLUÍDO' in messages[-2][0]
             assert 'Duração:' in messages[-2][0]
-            assert 'RPE médio: <b>8,0</b>' in messages[-2][0]
-            assert 'Comparação com o treino anterior' in messages[-2][0]
+            assert 'Esforço médio: <b>RPE 8,0</b>' in messages[-2][0]
+            assert 'Contra a última batalha igual' in messages[-2][0]
+            assert f'QUESTS {len(ids)}/{len(ids)}' in messages[-2][0]
+            assert messages[-2][0].count('✅ ') == len(ids)
             assert messages[-2][1]['reply_markup'] == bot.KEYBOARD_START
             timing = db_ops.get_session_timing(initial_id)
             assert timing['started_at'].endswith('-03:00') and timing['completed_at']

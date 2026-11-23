@@ -541,6 +541,30 @@ acesso (o bot hoje se protege pelo chat) e se havera notificacoes push.
 
 ### 2026-11-23
 
+- bestiario ampliado para 48 bases (6 por familia, 24 sprites novos) em 4
+  tiers por troca de paleta programatica (`paleta_do_tier`: Elite carmesim,
+  Ancestral violeta, Lendário dourado com aura), 192 inimigos; o tier sai
+  entre os liberados pelo nivel (`NIVEL_DO_TIER` 1, 10, 25 e 45) com 8% de
+  chance de um acima; etiqueta de tier na batalha e no encontro; galeria 6x8
+  com marcadores de tier; conquistas `bestiario_24` "Domador de feras",
+  `bestiario_lendario` e `bestiario_completo`; a conclusao lista os inimigos
+  com o nivel de antes da sessao, para os nomes baterem com a batalha
+- bestiario: 8 familias de 3 inimigos (24, com 16 sprites novos) em
+  `jogo.FAMILIAS_INIMIGOS`; o grupo muscular escolhe a familia e um sorteio
+  estavel por `zlib.crc32("data|exercicio")` escolhe o inimigo do dia
+  (substitui `INIMIGOS_POR_GRUPO`); `estado["inimigos_derrotados"]`,
+  conquistas `bestiario_12` e `bestiario_24` (tambem no Mini App), comando
+  `/bestiario` e botao "📕 Bestiário" com a galeria `render_bestiario`
+- level up com GIF animado (`render_level_up_gif`, `sendAnimation`) antes da
+  fanfarra em audio, porque o Telegram toca animacoes sozinho mas nao som
+- conclusao do treino como "🏆 TREINO CONCLUÍDO · TODAS AS QUESTS VENCIDAS!",
+  com uma linha ✅ por quest (exercicio, inimigo, carga, golpe) e o
+  "📊 RELATÓRIO" (Dano total, Esforço médio, Contra a última batalha igual,
+  Ficaram mais fortes, Dominados, Firmes no RPE 9, Recuo tático, Recordes)
+- todos os textos do bot reescritos no estilo JRPG (grimorio no `/ajuda`,
+  visao do oraculo no `/prever`, missao na garagem, arsenal, treino de cada
+  musculo, mapas, cronica, provisoes, peso e cintura do heroi, ritual de
+  aquecimento); erros com ⚠ continuam dizendo o motivo concreto
 - treino em formato de quest: cada exercicio e uma batalha contra um inimigo
   escolhido pelo grupo muscular principal (`jogo.INIMIGOS_POR_GRUPO`, com tres
   monstros menores novos: Diabrete Rúnico, Morcego de Ferro e Cogumelo Bravo);

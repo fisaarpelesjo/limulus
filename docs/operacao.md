@@ -77,6 +77,7 @@ TELEGRAM_TOKEN=seu_token_real
 /semana         Mapa da semana e missoes
 /missoes        Missoes da semana
 /conquistas     Conquistas
+/bestiario      Galeria dos inimigos enfrentados
 /diario         Diario de aventura
 /loja           Loja; /loja coringa compra um coringa extra
 /pausa N        Pausa de N dias; /pausa fim volta
@@ -102,11 +103,13 @@ historico de Terra Romeno e Remada curvada, sem depender do plano ativo, mostra
 a montagem da carga e nao cria sessao, logs, `session.json` nem registros de
 RPE.
 
-Ao registrar o ultimo exercicio, o bot envia automaticamente o resumo da sessao.
-Nao e necessario executar outro comando.
+Ao registrar o ultimo exercicio, o bot envia automaticamente "🏆 TREINO
+CONCLUÍDO · TODAS AS QUESTS VENCIDAS!", com uma linha por quest e o
+"📊 RELATÓRIO" da sessao. Nao e necessario executar outro comando.
 
-Depois do resumo vem a tela de vitoria do jogo (EXP, ouro, missoes, chefes,
-conquistas e level up, com imagem e, no level up, um som curto) e o HUD
+Depois vem a tela de vitoria do jogo (EXP, ouro, missoes, chefes,
+conquistas e level up, com imagem e, no level up, um GIF animado e a fanfarra
+em audio, que precisa ser tocada) e o HUD
 fixado no topo do chat e atualizado. Em lesao, doenca ou viagem, use
 `/pausa N` para proteger a sequencia e `/pausa fim` ao voltar. As imagens
 exigem `pillow` (em `requirements.txt`); sem ele o jogo segue so em texto.
@@ -345,7 +348,7 @@ Possiveis causas:
 - token de outro bot
 - updates antigos no Telegram
 
-### `Nenhuma sessao ativa. Use /gerar.`
+### `⚔ Nenhuma batalha em andamento. Toque em ⚔ Iniciar treino.`
 
 Voce enviou carga antes de gerar treino, ou `session.json` foi apagado.
 

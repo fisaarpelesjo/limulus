@@ -27,6 +27,7 @@ Regras principais:
 import json
 import math
 import sqlite3
+import zlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
@@ -146,6 +147,10 @@ CONQUISTAS = (
     ("madrugador_5", "Madrugador", "5 treinos começados antes das 7h"),
     ("coruja_5", "Coruja", "5 treinos começados depois das 21h"),
     ("missoes_10", "Caçador de missões", "Cumprir 10 missões semanais"),
+    ("bestiario_12", "Caçador de feras", "Enfrentar 12 inimigos diferentes"),
+    ("bestiario_24", "Domador de feras", "Enfrentar 24 inimigos diferentes"),
+    ("bestiario_lendario", "Matador de lendas", "Derrotar um inimigo Lendário"),
+    ("bestiario_completo", "Bestiário completo", "Enfrentar todos os 192 inimigos"),
 )
 
 DIAS_SEMANA = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
@@ -153,23 +158,86 @@ DIAS_SEMANA_LONGOS = (
     "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo",
 )
 
-# Cada exercicio do treino e uma quest contra um inimigo, escolhido pelo
-# primeiro grupo muscular principal do exercicio.
-INIMIGOS_POR_GRUPO = {
-    "Peitoral": "Golem de Ferro",
-    "Quadriceps": "Ogro da Montanha",
-    "Adutores": "Ogro da Montanha",
-    "Posteriores": "Serpente do Abismo",
-    "Gluteos": "Serpente do Abismo",
-    "Dorsais": "Grifo Sombrio",
-    "Trapezio": "Grifo Sombrio",
-    "Deltoide anterior": "Titã do Céu",
-    "Deltoide lateral": "Titã do Céu",
-    "Deltoide posterior": "Titã do Céu",
-    "Triceps": "Diabrete Rúnico",
-    "Biceps": "Morcego de Ferro",
-    "Antebraco": "Morcego de Ferro",
+# Cada exercicio do treino e uma quest contra um inimigo. O grupo muscular
+# principal define a familia (3 inimigos por familia) e a data sorteia qual
+# aparece: muda de um dia para o outro e fica igual durante o treino.
+FAMILIAS_INIMIGOS = {
+    "peito": (
+        "Golem de Ferro", "Tartaruga Bigorna", "Cavaleiro Oco",
+        "Rinoceronte Blindado", "Muralha Viva", "Caranguejo Couraçado",
+    ),
+    "pernas": (
+        "Ogro da Montanha", "Troll do Pântano", "Javali Colossal",
+        "Minotauro Rochoso", "Elefante de Guerra", "Gigante de Gelo",
+    ),
+    "posterior": (
+        "Serpente do Abismo", "Escorpião de Areia", "Basilisco",
+        "Centopeia Gigante", "Serpe do Deserto", "Naja Dourada",
+    ),
+    "costas": (
+        "Grifo Sombrio", "Harpia Uivante", "Kraken Mirim",
+        "Corvo Tempestuoso", "Arraia Celeste", "Mariposa Lunar",
+    ),
+    "ombros": (
+        "Titã do Céu", "Elemental da Tempestade", "Gárgula de Pedra",
+        "Fênix Cinzenta", "Djinn do Vento", "Águia de Trovão",
+    ),
+    "triceps": (
+        "Diabrete Rúnico", "Fogo-Fátuo", "Esqueleto Arqueiro",
+        "Duende Ladrão", "Bruxa do Pântano", "Lanterna Assombrada",
+    ),
+    "bracos": (
+        "Morcego de Ferro", "Lobo das Sombras", "Aranha de Cristal",
+        "Urso de Batalha", "Louva-a-deus Lâmina", "Macaco Rúnico",
+    ),
+    "outros": (
+        "Cogumelo Bravo", "Baú Mordedor", "Planta Carnívora",
+        "Pedra Falante", "Fantasma Errante", "Coruja Arcana",
+    ),
 }
+FAMILIA_POR_GRUPO = {
+    "Peitoral": "peito",
+    "Quadriceps": "pernas",
+    "Adutores": "pernas",
+    "Posteriores": "posterior",
+    "Gluteos": "posterior",
+    "Dorsais": "costas",
+    "Trapezio": "costas",
+    "Deltoide anterior": "ombros",
+    "Deltoide lateral": "ombros",
+    "Deltoide posterior": "ombros",
+    "Triceps": "triceps",
+    "Biceps": "bracos",
+    "Antebraco": "bracos",
+}
+BASES_INIMIGOS = tuple(nome for familia in FAMILIAS_INIMIGOS.values() for nome in familia)
+
+# Versoes de cada inimigo (troca de paleta, como nos JRPGs classicos). A versao
+# mais forte liberada depende do nivel do heroi.
+TIERS = ("", "Elite", "Ancestral", "Lendário")
+NIVEL_DO_TIER = (1, 10, 25, 45)
+CHANCE_RARO = 8  # % de chance de aparecer uma versao acima da liberada
+
+
+def nome_com_tier(base, indice):
+    return base if indice == 0 else f"{base} · {TIERS[indice]}"
+
+
+def separar_tier(nome):
+    if " · " in nome:
+        base, tier = nome.rsplit(" · ", 1)
+        if tier in TIERS:
+            return base, TIERS.index(tier)
+    return nome, 0
+
+
+def tier_maximo(nivel):
+    return max(i for i, minimo in enumerate(NIVEL_DO_TIER) if nivel >= minimo)
+
+
+TODOS_OS_INIMIGOS = tuple(
+    nome_com_tier(base, indice) for base in BASES_INIMIGOS for indice in range(len(TIERS))
+)
 INIMIGO_PADRAO = "Cogumelo Bravo"
 
 # Botoes de RPE como golpes: (rotulo, valor gravado, nome do golpe).
@@ -181,13 +249,35 @@ GOLPES_RPE = (
 )
 
 
-def inimigo_do_exercicio(grupos):
-    """Recebe a lista de grupos do exercicio [{muscle_group, role}] e devolve o inimigo."""
-    principais = [g["muscle_group"] for g in grupos if g.get("role") == "principal"]
-    for grupo in principais + [g["muscle_group"] for g in grupos]:
-        if grupo in INIMIGOS_POR_GRUPO:
-            return INIMIGOS_POR_GRUPO[grupo]
-    return INIMIGO_PADRAO
+def familia_do_exercicio(grupos):
+    """Aceita grupos como dicts {muscle_group, role} ou tuplas (grupo, papel)."""
+    pares = [
+        (g["muscle_group"], g.get("role")) if isinstance(g, dict) else (g[0], g[1])
+        for g in grupos
+    ]
+    principais = [grupo for grupo, papel in pares if papel == "principal"]
+    for grupo in principais + [grupo for grupo, _ in pares]:
+        if grupo in FAMILIA_POR_GRUPO:
+            return FAMILIA_POR_GRUPO[grupo]
+    return "outros"
+
+
+def inimigo_do_exercicio(grupos, exercicio="", dia=None, nivel=1):
+    """Inimigo do exercicio no dia: sorteio estavel pela data e pelo nome.
+
+    A familia vem do grupo muscular; a versao (normal, Elite, Ancestral,
+    Lendario) sai entre as liberadas pelo nivel, com uma chance pequena de
+    uma versao acima.
+    """
+    familia = FAMILIAS_INIMIGOS[familia_do_exercicio(grupos)]
+    dia = dia or db_ops.agora_brasilia().date()
+    semente = zlib.crc32(f"{dia.isoformat()}|{exercicio}".encode("utf-8"))
+    base = familia[semente % len(familia)]
+    limite = tier_maximo(nivel)
+    tier = (semente >> 8) % (limite + 1)
+    if tier == limite and limite < len(TIERS) - 1 and (semente >> 16) % 100 < CHANCE_RARO:
+        tier += 1
+    return nome_com_tier(base, tier)
 
 
 def nome_do_golpe(rpe):
@@ -527,6 +617,7 @@ def calcular(sessoes, hoje=None, extras=None):
     missoes_feitas = set()
     conquistas = {}
     contadores = defaultdict(int)
+    derrotados = defaultdict(int)
     por_sessao = {}
     historico_nivel = []
     diario = []
@@ -614,6 +705,11 @@ def calcular(sessoes, hoje=None, extras=None):
         contadores["recordes"] += len(detalhe["recordes"])
         contadores["perfeitas"] += 1 if perfeita else 0
         contadores["missoes"] += len(detalhe["missoes"])
+        for log in sessao["logs"]:
+            inimigo = inimigo_do_exercicio(
+                grupos.get(log["nome"], []), log["nome"], sessao["data"], nivel_antes
+            )
+            derrotados[inimigo] += 1
         inicio = sessao.get("inicio")
         if inicio is not None:
             contadores["madrugador"] += 1 if inicio.hour < 7 else 0
@@ -643,6 +739,10 @@ def calcular(sessoes, hoje=None, extras=None):
             "madrugador_5": contadores["madrugador"] >= 5,
             "coruja_5": contadores["coruja"] >= 5,
             "missoes_10": contadores["missoes"] >= 10,
+            "bestiario_12": len(derrotados) >= 12,
+            "bestiario_24": len(derrotados) >= 24,
+            "bestiario_lendario": any(separar_tier(n)[1] == 3 for n in derrotados),
+            "bestiario_completo": len(derrotados) >= len(TODOS_OS_INIMIGOS),
         }
         for cid, atingida in condicoes.items():
             if atingida and cid not in conquistas:
@@ -720,6 +820,7 @@ def calcular(sessoes, hoje=None, extras=None):
         "diario": diario[-30:],
         "historico_nivel": historico_nivel,
         "treinos_concluidos": len(sessoes),
+        "inimigos_derrotados": dict(derrotados),
         "recordes_total": contadores["recordes"],
         "por_sessao": por_sessao,
     }

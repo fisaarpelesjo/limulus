@@ -220,12 +220,180 @@ def _assert_batalha_e_encontro():
     jogo_visual.render_batalha("Golem de Ferro", 3, 5, "FOR", 12)
     assert time.perf_counter() - inicio < 0.5
 
+    # Nomes com tier: etiqueta na batalha e no encontro, nome base cortado.
+    elite = jogo_visual.render_batalha("Golem de Ferro · Elite", 2, 5, "FOR", 12)
+    _verificar_cena(elite)
+    assert elite != batalha
+    _salvar("batalha_elite.png", elite)
+    for nome in ("Caranguejo Couraçado · Lendário", "Louva-a-deus Lâmina · Ancestral", "Nome Inventado · Elite"):
+        _verificar_cena(jogo_visual.render_batalha(nome, 30, 30, "DIS", 45))
+    _salvar("batalha_lendario.png", jogo_visual.render_batalha("Caranguejo Couraçado · Lendário", 3, 5, "VIG", 30))
+    tiers = [
+        "Rinoceronte Blindado", "Muralha Viva · Elite", "Naja Dourada · Ancestral",
+        "Águia de Trovão · Lendário", "Fantasma Errante · Elite",
+    ]
+    encontro = jogo_visual.render_encontro(tiers, "A")
+    _verificar_cena(encontro)
+    _salvar("encontro_tiers.png", encontro)
+    seis = [jogo_sprites.nome_com_tier(n, 2) for n in jogo_sprites.BASES_INIMIGOS[3:9]]
+    seis_png = jogo_visual.render_encontro(seis, "B")
+    _verificar_cena(seis_png)
+    _salvar("encontro_seis_ancestrais.png", seis_png)
+
+
+def _assert_tiers():
+    assert jogo_sprites.TIERS == ("", "Elite", "Ancestral", "Lendário")
+    assert jogo_sprites.TIERS == jogo.TIERS
+    for base in ("Golem de Ferro", "Louva-a-deus Lâmina", "Fênix Cinzenta"):
+        for indice in range(4):
+            completo = jogo_sprites.nome_com_tier(base, indice)
+            assert completo == jogo.nome_com_tier(base, indice)
+            assert jogo_sprites.separar_tier(completo) == (base, indice)
+    assert jogo_sprites.nome_com_tier("Basilisco", 0) == "Basilisco"
+    assert jogo_sprites.nome_com_tier("Golem de Ferro", 1) == "Golem de Ferro · Elite"
+    assert jogo_sprites.separar_tier("Golem de Ferro · lendario") == ("Golem de Ferro", 3)
+    assert jogo_sprites.separar_tier("Golem de Ferro · Rei") == ("Golem de Ferro · Rei", 0)
+    assert jogo_sprites.separar_tier("") == ("", 0)
+
+    # Base desconhecida (com ou sem tier) cai no cogumelo.
+    cogumelo = jogo_sprites.sprite_do_inimigo("Cogumelo Bravo")
+    assert jogo_sprites.sprite_do_inimigo("Lagarto Qualquer") == cogumelo
+    assert jogo_sprites.sprite_do_inimigo("Lagarto · Elite") == jogo_sprites.sprite_do_inimigo("Cogumelo Bravo · Elite")
+
+    for base in jogo_sprites.BASES_INIMIGOS:
+        linhas0, paleta0 = jogo_sprites.sprite_do_inimigo(base)
+        for indice in range(1, 4):
+            linhas, paleta = jogo_sprites.sprite_do_inimigo(jogo_sprites.nome_com_tier(base, indice))
+            assert len(linhas) == 24 and all(len(l) == 24 for l in linhas), base
+            assert all(c == "." or c in paleta for l in linhas for c in l), base
+            # Contorno igual; a maior parte do resto da paleta muda.
+            assert paleta["K"] == paleta0["K"], base
+            mudadas = [k for k in paleta0 if k != "K" and paleta[k] != paleta0[k]]
+            assert len(mudadas) >= max(1, (len(paleta0) - 1) // 2), (base, indice, mudadas)
+            if indice < 3:
+                assert linhas == linhas0, base
+            else:
+                # Lendario: mesmo desenho com brilho em volta.
+                assert jogo_sprites.SIMBOLO_AURA_LENDARIA in "".join(linhas), base
+                assert all(
+                    a == b or b == "." for la, lb in zip(linhas, linhas0) for a, b in zip(la, lb)
+                ), base
+        cores = {
+            tuple(sorted(jogo_sprites.sprite_do_inimigo(jogo_sprites.nome_com_tier(base, i))[1].items()))
+            for i in range(4)
+        }
+        assert len(cores) == 4, base
+
+
+def _folha(nomes, colunas, escala=3):
+    """Folha de sprites com nome embaixo, para conferir o desenho a olho."""
+    largura_celula, altura_celula = 64, 46
+    linhas_grade = -(-len(nomes) // colunas)
+    imagem = Image.new("RGB", (colunas * largura_celula, linhas_grade * altura_celula), (18, 26, 70))
+    for i, nome in enumerate(nomes):
+        x, y = (i % colunas) * largura_celula, (i // colunas) * altura_celula
+        linhas, paleta = jogo_sprites.sprite_do_inimigo(nome)
+        jogo_sprites.desenhar_sprite(imagem, linhas, paleta, x + 20, y + 2, 1)
+        jogo_visual.texto(imagem, x + 2, y + 28, jogo_visual.cortar(nome, largura_celula - 4), jogo_visual.BRANCO)
+    imagem = imagem.resize((imagem.width * escala, imagem.height * escala), Image.NEAREST)
+    saida = io.BytesIO()
+    imagem.save(saida, format="PNG")
+    return saida.getvalue()
+
+
+def _assert_bestiario():
+    bases = jogo_sprites.BASES_INIMIGOS
+    assert len(bases) == 48 and len(set(bases)) == 48
+    assert jogo_sprites.TODOS_OS_INIMIGOS == bases
+    # Mesma ordem das familias do jogo: seis por grupo, uma linha da grade.
+    assert bases == tuple(jogo.BASES_INIMIGOS)
+    for grupo, familia in enumerate(jogo.FAMILIAS_INIMIGOS.values()):
+        assert bases[grupo * 6:grupo * 6 + 6] == tuple(familia), familia
+    sprites = set()
+    for nome in bases:
+        assert nome in jogo_sprites.CHEFES or nome in jogo_sprites.INIMIGOS_MENORES, nome
+        linhas, paleta = jogo_sprites.sprite_do_inimigo(nome)
+        assert len(linhas) == 24 and all(len(l) == 24 for l in linhas), nome
+        assert all(c == "." or c in paleta for l in linhas for c in l), nome
+        assert jogo_sprites.sprite_do_chefe(nome) == (linhas, paleta), nome
+        # Desenho com corpo: ao menos 120 pixels opacos.
+        assert sum(c != "." for l in linhas for c in l) >= 120, nome
+        sprites.add(tuple(linhas))
+    # Cada nome tem desenho proprio (nenhum caiu no cogumelo por engano).
+    assert len(sprites) == 48
+
+    completo = jogo_visual.render_bestiario(bases, vistos=set(jogo.TODOS_OS_INIMIGOS))
+    imagem = _verificar_png(completo)
+    assert len(completo) < 120_000, len(completo)
+    assert completo == jogo_visual.render_bestiario(bases)
+    _salvar("bestiario_192.png", completo)
+
+    alguns = set(bases[::4]) | {
+        "Golem de Ferro · Elite", "Golem de Ferro · Ancestral", "Naja Dourada · Lendário",
+        "Mariposa Lunar · Ancestral", "Basilisco · Elite", "Nome Inventado · Elite",
+    }
+    parcial = jogo_visual.render_bestiario(bases, vistos=alguns)
+    _verificar_png(parcial)
+    assert len(parcial) < 120_000, len(parcial)
+    _salvar("bestiario_parcial.png", parcial)
+
+    nenhum = jogo_visual.render_bestiario(bases, vistos=set())
+    _verificar_png(nenhum)
+    assert len(nenhum) < 120_000, len(nenhum)
+    _salvar("bestiario_vazio.png", nenhum)
+    assert len({completo, parcial, nenhum}) == 3
+
+    # Uma lista menor de bases tambem funciona.
+    _verificar_png(jogo_visual.render_bestiario(list(bases[:24]), vistos=set(bases[:6])))
+    vazio = jogo_visual.render_bestiario([])
+    assert Image.open(io.BytesIO(vazio)).width == 960
+    _verificar_png(jogo_visual.render_bestiario(["Nome Inventado Qualquer"], vistos=set()))
+
+    inicio = time.perf_counter()
+    jogo_visual.render_bestiario(bases, vistos=alguns)
+    assert time.perf_counter() - inicio < 1.5
+
+    _salvar("folha_48_bases.png", _folha(bases, 6))
+    for base in ("Golem de Ferro", "Caranguejo Couraçado"):
+        arquivo = "tiers_" + base.split()[0].lower() + ".png"
+        _salvar(arquivo, _folha([jogo_sprites.nome_com_tier(base, t) for t in range(4)], 4, escala=4))
+    return imagem
+
+
+def _verificar_gif(dados):
+    assert dados.startswith(b"GIF89a")
+    assert len(dados) < 600_000, len(dados)
+    imagem = Image.open(io.BytesIO(dados))
+    assert imagem.format == "GIF"
+    assert imagem.width == 480, imagem.size
+    assert imagem.n_frames > 8
+    assert imagem.info.get("loop") == 0
+    duracoes = []
+    for quadro in range(imagem.n_frames):
+        imagem.seek(quadro)
+        duracoes.append(imagem.info.get("duration", 0))
+    assert 1500 <= sum(duracoes) <= 2500, duracoes
+    assert duracoes[-1] >= 700, duracoes
+    return imagem
+
+
+def _assert_gif_level_up():
+    com_titulo = jogo_visual.render_level_up_gif(9, 10, "FOR", "Soldado", titulo_novo=True)
+    _verificar_gif(com_titulo)
+    _salvar("level_up.gif", com_titulo)
+    _verificar_gif(jogo_visual.render_level_up_gif(3, 4, "VIG", "Aprendiz"))
+    _verificar_gif(jogo_visual.render_level_up_gif(98, 99, "DIS", "Lenda", titulo_novo=True))
+    _verificar_gif(jogo_visual.render_level_up_gif(5, 6, "XYZ", "Título de nome muito comprido mesmo", True))
+
 
 def main():
     _assert_fonte_e_sprites()
     _assert_estado_vazio()
     _assert_historico_e_level_up()
     _assert_batalha_e_encontro()
+    _assert_tiers()
+    _assert_bestiario()
+    _assert_gif_level_up()
     print("jogo_visual_test: ok")
 
 

@@ -270,9 +270,9 @@ def main():
             assert len(plan_b["exercises"]) == 2
 
             telegram_poller.handle_plans()
-            assert "B: 2 exercicios ✓ ativo" in mensagens[-1]
+            assert "📍 B: 2 quests ⭐ <b>mapa atual</b>" in mensagens[-1]
             telegram_poller.handle_select_plan("/plano A")
-            assert "Plano ativo: <b>A</b>" in mensagens[-1]
+            assert "Mapa escolhido: <b>A</b>" in mensagens[-1]
             assert db_ops.get_active_training_plan()["name"] == "A"
 
             treino_a = db_ops.create_session("2026-06-08", "A")
@@ -315,7 +315,7 @@ def main():
                 == "barra reta 2,50 m 9kg + 29kg de anilhas"
             )
             telegram_poller.handle_training_b()
-            assert "10 voltas | descanso 60s" in mensagens[-1]
+            assert "10 rodadas · ⏳ 60 s de descanso" in mensagens[-1]
             assert "Treino B - garagem" not in mensagens[-1]
             assert "Farmer walk ida e volta" in mensagens[-1]
             assert "peso: 34kg" in mensagens[-1]
@@ -372,11 +372,11 @@ def main():
             assert db_ops.count_filled([]) == 0
 
             telegram_poller.handle_exercises()
-            assert "Lista de exercicios" in mensagens[-1]
+            assert "ARSENAL DO MAPA ATUAL" in mensagens[-1]
             assert "Supino reto" in mensagens[-1]
 
             telegram_poller.handle_volume()
-            assert "Volume por musculo" in mensagens[-1]
+            assert "TREINO DE CADA MÚSCULO" in mensagens[-1]
             assert "Peitoral" in mensagens[-1]
 
             session_id = db_ops.create_session("2026-06-09")
@@ -403,21 +403,21 @@ def main():
             test_session.write_text(json.dumps(session), encoding="utf-8")
 
             telegram_poller.handle("/desfazer", session)
-            assert mensagens[-1] == "Nada para desfazer."
+            assert mensagens[-1] == "↩ Nenhum turno para desfazer ainda."
 
             telegram_poller.handle("carga invalida", session)
-            assert "Formato:" in mensagens[-1]
+            assert "Golpe manual não entendido" in mensagens[-1]
 
             telegram_poller.handle("40 9", session)
             assert "TREINO CONCLUÍDO" in mensagens[-2]
-            assert "Volume total: <b>600 kg</b>" in mensagens[-2]
+            assert "Dano total: <b>600 kg</b>" in mensagens[-2]
             assert "VITÓRIA" in mensagens[-1]
 
             telegram_poller.handle("42 8", session)
-            assert mensagens[-1] == "O treino ja esta completo. Use /status."
+            assert mensagens[-1] == "🏆 As quests de hoje já foram vencidas. Veja /status."
 
             telegram_poller.handle("/status", session)
-            assert "Treino completo. 1/1" in mensagens[-1]
+            assert "Todas as quests de hoje estão vencidas (1/1)" in mensagens[-1]
 
             telegram_poller.handle("/desfazer", session)
             assert "Turno desfeito" in mensagens[-2]

@@ -438,8 +438,8 @@ def main():
 
             telegram_poller.handle_dashboard()
             assert bot_output.is_file()
-            assert "Dashboard atualizado em" in sent_messages[-1]
-            assert "Volume: <b>1.860 kg</b>" in sent_messages[-1]
+            assert "CRÔNICA ATUALIZADA" in sent_messages[-1]
+            assert "Dano: <b>1.860 kg</b>" in sent_messages[-1]
             assert str(bot_output) not in sent_messages[-1]
             conn = sqlite3.connect(test_db)
             try:

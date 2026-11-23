@@ -22,7 +22,7 @@ Usuario envia /gerar
      cada golpe, descanso e botoes de golpe com o RPE)
 
 Usuario conclui o ultimo exercicio de uma sessao de um plano de A a E
-  -> bot envia o resumo
+  -> bot envia "🏆 TREINO CONCLUÍDO · TODAS AS QUESTS VENCIDAS!" com as quests e o relatorio
   -> o plano seguinte da sequencia (A, B, C, D, E e volta para A) passa a ser o ativo
 
 Usuario envia /prever

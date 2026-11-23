@@ -605,9 +605,12 @@ def render_batalha(inimigo, posicao, total, classe_base="FOR", nivel=1):
     img = _nova_tela(ALTURA_CENA)
     _cenario(img)
 
+    base, tier = sp.separar_tier(inimigo)
     linhas, paleta = sp.sprite_do_inimigo(inimigo)
     _sombra(img, 36 + 36, CHAO + 4, 56)
     sp.desenhar_sprite(img, linhas, paleta, 36, CHAO - 66, 3)
+    if tier == 3:
+        _brilhos(img, 36, CHAO - 66, 72)
 
     estagio = sp.estagio_do_nivel(int(nivel or 1))
     heroi, paleta_heroi = sp.sprite_do_heroi(classe_base, estagio)
@@ -622,9 +625,54 @@ def render_batalha(inimigo, posicao, total, classe_base="FOR", nivel=1):
     cursor(img, x0 + 10, y + 9)
     texto(img, x0 + 24, y + 6, f"INIMIGO {posicao}/{total}", AMARELO)
     _pips(img, x0 + w - 14, y + 12, posicao, total)
-    nome = str(inimigo or sp.INIMIGO_PADRAO)
-    texto(img, x0 + 12, y + 21, cortar(nome, w - 24, 2), BRANCO, escala=2)
+    nome = base or sp.INIMIGO_PADRAO
+    largura_nome = w - 24
+    if tier:
+        largura_etiqueta = etiqueta_tier(img, x0 + w - 12, y + 24, tier, direita=True)
+        largura_nome -= largura_etiqueta + 6
+    texto(img, x0 + 12, y + 21, cortar(nome, largura_nome, 2), BRANCO, escala=2)
     return _png(img)
+
+
+def _rotulo_tier(tier, largura_max=None):
+    """Texto da etiqueta do tier em maiusculas, abreviado se nao couber."""
+    rotulo = sp.TIERS[tier].upper()
+    if largura_max is not None and sp.largura_texto(rotulo) > largura_max:
+        rotulo = rotulo[:5] + "."
+    return rotulo
+
+
+def etiqueta_tier(imagem, x, y, tier, direita=False, largura_max=None, centro=False):
+    """Etiqueta colorida do tier ("ELITE"): caixa escura com texto na cor.
+
+    `x` e a borda esquerda (ou a direita, com `direita`, ou o centro, com
+    `centro`); `y` e o topo da caixa, que tem 15 px de altura. Retorna a
+    largura da etiqueta (0 no tier comum, que nao tem etiqueta).
+    """
+    if not tier:
+        return 0
+    cor = sp.CORES_TIER[tier]
+    rotulo = _rotulo_tier(tier, None if largura_max is None else largura_max - 6)
+    largura = sp.largura_texto(rotulo) + 6
+    if direita:
+        x -= largura
+    elif centro:
+        x -= largura // 2
+    draw = ImageDraw.Draw(imagem)
+    draw.rectangle((x, y, x + largura - 1, y + 14), fill=BORDA_ESCURA)
+    draw.rectangle((x + 1, y + 1, x + largura - 2, y + 13), outline=cor, fill=_misturar(cor, BORDA_ESCURA, 0.75))
+    sp.desenhar_texto(imagem, x + 3, y + 2, rotulo, cor)
+    return largura
+
+
+def _brilhos(imagem, x, y, tamanho):
+    """Quatro faiscas em cruz em volta do inimigo Lendario."""
+    draw = ImageDraw.Draw(imagem)
+    for fx, fy in ((0.05, 0.2), (0.92, 0.12), (0.98, 0.7), (0.0, 0.8)):
+        px, py = x + round(fx * tamanho), y + round(fy * tamanho)
+        draw.point((px, py), fill=BRANCO)
+        for ddx, ddy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            draw.point((px + ddx, py + ddy), fill=sp.CORES_TIER[3])
 
 
 def _quebrar_nome(nome, largura_max):
@@ -667,11 +715,15 @@ def render_encontro(inimigos, plano):
         escala = 2
         for i, nome in enumerate(mostrados):
             cx = round(x0 + vaga * i + vaga / 2)
+            base, tier = sp.separar_tier(nome)
             linhas, paleta = sp.sprite_do_inimigo(nome)
             largura, altura = sp.tamanho_sprite(linhas, escala)
             _sombra(img, cx, chao + 2, 36)
-            sp.desenhar_sprite(img, linhas, paleta, cx - largura // 2, chao - altura + 6, escala)
-            for j, linha in enumerate(_quebrar_nome(nome, int(vaga) - 4)):
+            topo = chao - altura + 6
+            sp.desenhar_sprite(img, linhas, paleta, cx - largura // 2, topo, escala)
+            if tier:
+                etiqueta_tier(img, cx, topo - 16, tier, centro=True, largura_max=int(vaga) - 2)
+            for j, linha in enumerate(_quebrar_nome(base, int(vaga) - 4)):
                 texto_centro(img, cx, chao + 6 + j * 11, linha, BRANCO)
     else:
         texto_centro(img, LARGURA // 2, chao - 30, "Nenhum inimigo à vista.", CINZA)
@@ -683,3 +735,197 @@ def render_encontro(inimigos, plano):
     quantidade = len(inimigos)
     texto_direita(img, x0 + w - 12, y + 15, f"{quantidade} inimigo{'s' if quantidade != 1 else ''}", CIANO)
     return _png(img)
+
+
+# --------------------------------------------------------------------------
+# Bestiario
+# --------------------------------------------------------------------------
+
+COLUNAS_BESTIARIO = 6
+LARGURA_BESTIARIO = 480
+ESCALA_BESTIARIO = 2
+SILHUETA = (50, 62, 128)
+CONTORNO_SILHUETA = (10, 12, 36)
+
+
+def _tiers_vistos(nomes, vistos):
+    """Para cada base, o conjunto de indices de tier ja vistos."""
+    por_base = {nome: set() for nome in nomes}
+    for completo in vistos:
+        base, tier = sp.separar_tier(completo)
+        if base in por_base:
+            por_base[base].add(tier)
+    return por_base
+
+
+def _pip_tier(imagem, x, y, tier, visto):
+    """Marcador 6 x 6 de um tier: cheio na cor do tier, ou vazio."""
+    draw = ImageDraw.Draw(imagem)
+    draw.rectangle((x, y, x + 5, y + 5), fill=BORDA_ESCURA)
+    if visto:
+        cor = sp.CORES_TIER[tier]
+        draw.rectangle((x + 1, y + 1, x + 4, y + 4), fill=cor)
+        draw.point((x + 1, y + 1), fill=_misturar(cor, BRANCO, 0.6))
+        draw.line((x + 1, y + 4, x + 4, y + 4), fill=_misturar(cor, BORDA_ESCURA, 0.35))
+    else:
+        draw.rectangle((x + 1, y + 1, x + 4, y + 4), fill=TRILHO)
+        draw.point((x + 2, y + 2), fill=CINZA_ESCURO)
+
+
+def render_bestiario(nomes, vistos=None):
+    """Galeria 'BESTIÁRIO': uma celula por inimigo base, 4 tiers em cada.
+
+    `nomes` sao os inimigos base (48 em `jogo_sprites.BASES_INIMIGOS`, uma
+    familia de 6 por linha). `vistos` e o conjunto de nomes completos ja
+    enfrentados, com tier ("Golem de Ferro · Elite"); o nome base sozinho vale
+    como tier 0. Cada celula mostra o sprite nas cores do maior tier visto
+    (ou silhueta com "???"), o nome e quatro marcadores de tier. O total do
+    cabecalho conta bases x tiers (192 com as 48 bases). `vistos=None` mostra
+    tudo como visto. Desenhada em 480 px e ampliada 2x (960 px).
+    """
+    nomes = [str(n) for n in (nomes or [])]
+    n_tiers = len(sp.TIERS)
+    if vistos is None:
+        vistos = {sp.nome_com_tier(n, t) for n in nomes for t in range(n_tiers)}
+    por_base = _tiers_vistos(nomes, set(vistos))
+    largura_tela = LARGURA_BESTIARIO
+    linhas_grade = max(1, -(-len(nomes) // COLUNAS_BESTIARIO))
+    altura_celula = 88
+    topo_grade = MARGEM + 28
+    altura = topo_grade + 8 + linhas_grade * altura_celula + 4 + MARGEM
+    img = _nova_tela(altura, largura_tela)
+    x0, w = MARGEM, largura_tela - 2 * MARGEM
+
+    janela(img, x0, MARGEM, w, 24)
+    cursor(img, x0 + 10, MARGEM + 9)
+    texto(img, x0 + 24, MARGEM + 6, "BESTIÁRIO", AMARELO)
+    conhecidos = sum(len(t) for t in por_base.values())
+    especies = sum(1 for t in por_base.values() if t)
+    resumo = f"{especies}/{len(nomes)} espécies   {conhecidos}/{len(nomes) * n_tiers}"
+    texto_direita(img, x0 + w - 12, MARGEM + 6, resumo, BRANCO)
+
+    janela(img, x0, topo_grade, w, altura - topo_grade - MARGEM)
+    if not nomes:
+        texto_centro(img, largura_tela // 2, topo_grade + 30, "Nenhum inimigo registrado.", CINZA)
+        return _png(img, ESCALA_BESTIARIO)
+
+    draw = ImageDraw.Draw(img)
+    largura_celula = (w - 16) / COLUNAS_BESTIARIO
+    for linha in range(1, linhas_grade):
+        ly = topo_grade + 8 + linha * altura_celula - 3
+        for px in range(x0 + 10, x0 + w - 10, 3):
+            draw.point((px, ly), fill=(80, 110, 200))
+    for i, nome in enumerate(nomes):
+        coluna, linha = i % COLUNAS_BESTIARIO, i // COLUNAS_BESTIARIO
+        cx = round(x0 + 8 + largura_celula * coluna + largura_celula / 2)
+        y = topo_grade + 8 + linha * altura_celula
+        tiers = por_base.get(nome) or set()
+        moldura_sprite(img, cx - 26, y, 52)
+        if tiers:
+            linhas, paleta = sp.sprite_do_inimigo(sp.nome_com_tier(nome, max(tiers)))
+        else:
+            linhas, paleta = sp.sprite_do_inimigo(nome)
+            paleta = {k: (CONTORNO_SILHUETA if k == "K" else SILHUETA) for k in paleta}
+        sp.desenhar_sprite(img, linhas, paleta, cx - 24, y + 2, 2)
+        rotulo = _quebrar_nome(nome, int(largura_celula) - 4) if tiers else ["???"]
+        for j, parte in enumerate(rotulo):
+            texto_centro(img, cx, y + 51 + j * 10, parte, BRANCO if tiers else CINZA_ESCURO)
+        passo = 8
+        px0 = cx - (n_tiers * passo - 2) // 2
+        for t in range(n_tiers):
+            _pip_tier(img, px0 + t * passo, y + 76, t, t in tiers)
+    return _png(img, ESCALA_BESTIARIO)
+
+
+# --------------------------------------------------------------------------
+# GIF de level up (o Telegram toca GIF sozinho; som nao)
+# --------------------------------------------------------------------------
+
+LARGURA_GIF = 160
+ALTURA_GIF = 126
+QUADROS_GIF = 16
+DURACAO_QUADRO = 80  # ms
+DURACAO_FINAL = 800  # ms do ultimo quadro
+CORES_GIF = 64
+
+
+def _quadro_level_up(quadro, nivel_antes, nivel_depois, classe_base, titulo, titulo_novo):
+    img = _nova_tela(ALTURA_GIF, LARGURA_GIF)
+    draw = ImageDraw.Draw(img)
+    cx = LARGURA_GIF // 2
+    chao = 62
+
+    # Coluna de luz que sobe e se abre nos primeiros quadros.
+    abertura = min(1.0, (quadro + 1) / 5)
+    meia = round(6 + 18 * abertura)
+    topo = round(chao - (chao - 2) * abertura)
+    for i, (largura, cor) in enumerate(((meia, (30, 40, 110)), (meia * 2 // 3, (60, 80, 170)), (meia // 3, (150, 180, 255)))):
+        draw.rectangle((cx - largura, topo + i * 2, cx + largura, chao), fill=cor)
+    draw.ellipse((cx - meia - 6, chao - 4, cx + meia + 6, chao + 4), fill=(120, 150, 240))
+
+    # Heroi, que pisca em branco no quadro do "LEVEL UP!".
+    estagio = sp.estagio_do_nivel(int(nivel_depois or 1))
+    linhas, paleta = sp.sprite_do_heroi(classe_base, estagio)
+    if quadro == 5:
+        paleta = {k: BRANCO for k in paleta}
+    largura, altura = sp.tamanho_sprite(linhas, 2)
+    sp.desenhar_sprite(img, linhas, paleta, cx - largura // 2, chao - altura + 4, 2)
+
+    # Faiscas subindo em posicoes fixas, deslocadas por quadro.
+    for i in range(10):
+        sx = cx - 34 + (i * 29) % 68
+        sy = chao - ((quadro * 5 + i * 13) % 60)
+        cor = AMARELO if i % 2 else BRANCO
+        if quadro % 2 == i % 2:
+            draw.point((sx, sy), fill=cor)
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                draw.point((sx + dx, sy + dy), fill=sp.AURA)
+        else:
+            draw.point((sx, sy), fill=cor)
+
+    # Janela com o texto, a partir do quadro 4.
+    if quadro >= 4:
+        y = chao + 8
+        janela(img, 2, y, LARGURA_GIF - 4, ALTURA_GIF - y - 2)
+        cor = (AMARELO, BRANCO)[quadro % 2] if quadro < 10 else AMARELO
+        texto_centro(img, cx, y + 5, "LEVEL UP!", cor, escala=2)
+        if quadro >= 8:
+            linha = f"Lv {nivel_antes} → Lv {nivel_depois}"
+            texto_centro(img, cx, y + 26, cortar(linha, LARGURA_GIF - 16), BRANCO)
+        if titulo_novo and quadro >= 11:
+            texto_centro(img, cx, y + 37, cortar(f"Novo título: {titulo}", LARGURA_GIF - 16), CIANO)
+    return img
+
+
+def render_level_up_gif(nivel_antes, nivel_depois, classe_base="FOR", titulo="", titulo_novo=False):
+    """GIF animado de level up: luz subindo, heroi e janela 'LEVEL UP!'.
+
+    16 quadros de 80 ms com o ultimo segurando 800 ms (cerca de 2 s), em
+    loop, 480 px de largura e paleta unica de ate 64 cores.
+    """
+    quadros = [
+        _quadro_level_up(q, nivel_antes, nivel_depois, classe_base, titulo, titulo_novo)
+        for q in range(QUADROS_GIF)
+    ]
+    ampliados = [
+        q.resize((q.width * ESCALA_FINAL, q.height * ESCALA_FINAL), Image.NEAREST)
+        for q in quadros
+    ]
+    # Paleta unica tirada de uma montagem dos quadros mais variados.
+    amostra = Image.new("RGB", (quadros[0].width * 3, quadros[0].height))
+    for i, indice in enumerate((2, 5, QUADROS_GIF - 1)):
+        amostra.paste(quadros[indice], (i * quadros[0].width, 0))
+    paleta = amostra.quantize(colors=CORES_GIF, method=Image.Quantize.MEDIANCUT)
+    indexados = [q.quantize(palette=paleta, dither=Image.Dither.NONE) for q in ampliados]
+    duracoes = [DURACAO_QUADRO] * (QUADROS_GIF - 1) + [DURACAO_FINAL]
+    saida = io.BytesIO()
+    indexados[0].save(
+        saida,
+        format="GIF",
+        save_all=True,
+        append_images=indexados[1:],
+        duration=duracoes,
+        loop=0,
+        disposal=1,
+    )
+    return saida.getvalue()
