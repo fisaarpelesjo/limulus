@@ -24,7 +24,18 @@ Todos os comandos textuais devem ser enviados com `/`.
 | `/cintura` | Mostra a cintura atual, a variacao e as ultimas medicoes. |
 | `/status` | Mostra o exercicio atual e o progresso da sessao. |
 | `/desfazer` | Remove a carga e o RPE do ultimo registro preenchido. |
-| `/perfil` | Mostra a ficha do jogo: nivel, titulo, EXP, sequencia semanal e coringas. |
+| `/menu` | Abre o menu do heroi em botoes (status, chefes, semana, missoes, conquistas, diario, loja e app). |
+| `/perfil` | Mostra a ficha do jogo em imagem e texto: nivel, titulo, classe, EXP, atributos FOR/VIG/DIS, ouro, sequencia semanal e coringas. |
+| `/chefes` | Mostra os chefes de cada padrao de movimento, o rank e o HP restante ate o proximo rank. |
+| `/semana` | Mostra o mapa da semana em imagem e as missoes da semana. |
+| `/missoes` | Mostra as tres missoes da semana e o progresso. |
+| `/conquistas` | Lista as conquistas desbloqueadas e as que faltam. |
+| `/diario` | Mostra o diario de aventura, uma linha por treino. |
+| `/loja` | Mostra a loja e o ouro disponivel. |
+| `/loja coringa` | Compra um coringa extra com ouro. |
+| `/pausa N` | Declara pausa de N dias (ate 90) por lesao, doenca ou viagem; semanas em pausa nao gastam coringa nem quebram a sequencia. |
+| `/pausa fim` | Encerra a pausa ativa. |
+| `/app` | Envia o botao que abre a ficha completa no Mini App dentro do Telegram. |
 | `/ajuda` | Mostra a ajuda principal do bot. |
 | `80` | Registra 80 kg no proximo exercicio pendente. |
 | `80 8` | Registra 80 kg com RPE 8 (carga e RPE da serie de topo). |
@@ -143,10 +154,22 @@ Regras de treino:
 python tests/regras_treino_test.py
 ```
 
-Jogo (EXP, nivel e sequencia):
+Jogo (EXP, nivel, sequencia, chefes, missoes, loja e pausa):
 
 ```bash
 python tests/jogo_test.py
+```
+
+Imagens do jogo (com `LIMULUS_AMOSTRAS=<pasta>` grava PNGs de amostra):
+
+```bash
+python tests/jogo_visual_test.py
+```
+
+Mini App (`docs/app/index.html` e JSON do fragmento):
+
+```bash
+python tests/app_test.py
 ```
 
 Videos e frames:

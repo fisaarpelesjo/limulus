@@ -28,6 +28,9 @@ EXPORT_TABLES = (
     "body_weights",
     "waist_measurements",
     "body_profile",
+    "jogo_estado",
+    "jogo_compras",
+    "jogo_pausas",
     "schema_migrations",
 )
 

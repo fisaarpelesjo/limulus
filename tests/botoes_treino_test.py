@@ -21,7 +21,8 @@ def main():
              patch.object(ods_ops, 'SESSION_FILE', root / 'session.json'), \
              patch.object(bot, 'SESSION_FILE', root / 'session.json'), \
              patch.object(bot, 'send', lambda text, **kw: messages.append((text, kw)) or True), \
-             patch.object(bot, 'telegram_action', lambda method, payload: actions.append((method, payload)) or True):
+             patch.object(bot, 'telegram_action', lambda method, payload: actions.append((method, payload)) or True), \
+             patch.object(bot, 'telegram_call', lambda *args, **kwargs: (False, 'teste sem rede')):
             # Banco da versão anterior: migrar sem inventar horários históricos.
             with patch.object(db_ops, 'SCHEMA_VERSION', 12):
                 db_ops.init_db()
@@ -29,7 +30,7 @@ def main():
                     conn.execute("INSERT INTO training_sessions (date, training_type) VALUES ('2020-01-01', 'TREINO')")
                 conn.close()
             db_ops.init_db()
-            assert db_ops.get_schema_version() == 15
+            assert db_ops.get_schema_version() == db_ops.SCHEMA_VERSION
             nomes = {p['name']: p for p in db_ops.list_training_plans()}
             assert {'A', 'B', 'C', 'D', 'E'} <= set(nomes) and nomes['A']['active']
             assert db_ops.get_session_timing(1) == {'started_at': None, 'completed_at': None}

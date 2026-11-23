@@ -107,7 +107,16 @@ O bot so responde ao `CHAT_ID` configurado no codigo.
 /cintura        mostra a cintura atual e o historico
 /status         mostra progresso
 /desfazer       apaga o ultimo registro
-/perfil         nivel, EXP e sequencia semanal
+/menu           menu do heroi em botoes
+/perfil         ficha: nivel, classe, atributos e ouro
+/chefes         chefes de cada movimento e o HP restante
+/semana         mapa da semana e missoes
+/missoes        missoes da semana
+/conquistas     conquistas desbloqueadas
+/diario         diario de aventura
+/loja           loja; /loja coringa compra um coringa extra
+/pausa N        pausa de N dias; /pausa fim volta
+/app            abre a ficha completa no Mini App
 /ajuda          mostra ajuda
 ```
 
@@ -448,6 +457,51 @@ Quando o ultimo exercicio recebe carga, a mesma resposta inclui:
 Uma sessao e compativel para comparacao quando possui a mesma sequencia de
 exercicios preenchidos. Manter RPE 9 nao e chamado de consolidacao confirmada;
 essa classificacao exige queda do RPE 9 para 8 ou menos com a mesma carga.
+
+## Jogo Estilo JRPG
+
+As regras ficam em `limulus/jogo.py` (EXP, nivel, ouro, sequencia, coringas,
+missoes, conquistas, chefes e atributos FOR/VIG/DIS); as imagens, em
+`limulus/jogo_visual.py` e `limulus/jogo_sprites.py`. Tudo e recalculado a
+partir do historico; falha no jogo so gera log e nunca interrompe o treino.
+
+Depois do resumo do treino, `send_victory` envia a tela de vitoria:
+
+1. uma mensagem com a barra de EXP enchendo em poucas edicoes da mesma
+   mensagem (`PAUSA_ANIMACAO` = 0,35 s entre quadros), terminando no texto
+   completo da vitoria (EXP, ouro, missoes, dano em chefes, conquistas, level
+   up, novo titulo ou classe e ganhos de atributo);
+2. em level up ou semana completa, a mensagem sai com o efeito de confete
+   `EFEITO_FESTA`; se o Telegram recusar o efeito, sai sem ele;
+3. a imagem `render_vitoria` (janela de menu JRPG azul em pixel art);
+4. em level up, o som `limulus/assets/jogo/level_up.ogg` (fanfarra chiptune
+   original de 1,4 s) como mensagem de voz silenciosa;
+5. a atualizacao do HUD: uma mensagem fixada no topo do chat com nivel,
+   barra de EXP, mapa da semana, sequencia, coringas, ouro e atributos. O id
+   fica em `jogo_estado` (chave `hud_mensagem`); se a edicao falhar, o bot
+   envia e fixa uma nova.
+
+`/menu` e `/perfil` mostram o menu inline `MENU_JOGO`, cujos botoes usam
+callbacks `menu:perfil`, `menu:chefes`, `menu:semana`, `menu:missoes`,
+`menu:conquistas`, `menu:diario`, `menu:loja` e `menu:app`.
+
+### Mini App
+
+`/app` e o botao "🎮 Abrir app" enviam um botao `web_app` que abre
+`APP_URL` (`https://fisaarpelesjo.github.io/limulus/app/`) dentro do
+Telegram. A pagina e `docs/app/index.html`, publicada pelo GitHub Pages a
+partir da pasta `docs/` (com `docs/.nojekyll`). O estado vai no fragmento
+`#d=<base64url do JSON de jogo.exportar_para_app()>`, que nunca e enviado ao
+servidor; a pagina nao faz fetch, nao guarda dados e mostra uma demonstracao
+quando o fragmento falta ou e invalido. O bot continua sem webhook e sem
+servidor proprio.
+
+### Rede Nos Testes
+
+Todas as chamadas de rede do jogo (texto com efeito, fotos, voz, edicoes e
+fixar mensagem) passam por `telegram_poller.telegram_call(method, payload,
+files=None)`, que devolve `(ok, resultado)`. Testes devem substituir essa
+funcao para nunca falar com a rede.
 
 ## Formato Da Sessao Ativa
 

@@ -1,4 +1,5 @@
 import gc
+import logging
 import sqlite3
 import sys
 import tempfile
@@ -11,6 +12,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from limulus import dashboard
 from limulus import db_ops
+from limulus import jogo
 from limulus import telegram_poller
 
 
@@ -19,6 +21,7 @@ def main():
     original_data_dir = db_ops.DATA_DIR
     original_output = telegram_poller.DASHBOARD_OUTPUT
     original_send = telegram_poller.send
+    original_telegram_call = telegram_poller.telegram_call
 
     with tempfile.TemporaryDirectory(prefix="limulus-dashboard-") as temp_dir:
         temp_path = Path(temp_dir)
@@ -32,6 +35,7 @@ def main():
             db_ops.DB_PATH = test_db
             telegram_poller.DASHBOARD_OUTPUT = bot_output
             telegram_poller.send = sent_messages.append
+            telegram_poller.telegram_call = lambda *args, **kwargs: (False, "teste sem rede")
             db_ops.init_db()
 
             leite_id = db_ops.upsert_food(
@@ -379,6 +383,53 @@ def main():
             assert "Supino reto (barra)" in html
             assert "2.460 kg" in html
 
+            ficha = dados["jogo"]
+            assert ficha is not None
+            assert ficha["nivel"] >= 1
+            assert len(ficha["historico_nivel"]) == 2
+            assert ficha["diario"]
+            assert "Ficha do personagem" in html
+            assert f"Nivel {ficha['nivel']}" in html
+            assert 'id="grafico-nivel"' in html
+            assert "criarGraficoNivel();" in html
+            assert "Missoes da semana" in html
+            assert "Conquistas (" in html
+            assert 'class="ficha-conquista desbloqueada"' in html
+            assert 'class="ficha-conquista bloqueada"' in html
+            assert "ficha-barra-hp" in html
+            assert html.index('aria-label="Resumo corporal"') < html.index(
+                "Ficha do personagem"
+            ) < html.index("Volume por sessao")
+
+            ficha_maliciosa = dict(ficha)
+            ficha_maliciosa["titulo"] = "<script>alert(1)</script>"
+            ficha_maliciosa["diario"] = [{"data": "2026-05-08", "texto": "<b>x</b>"}]
+            html_ficha = dashboard._render_ficha_personagem(ficha_maliciosa)
+            assert "<script>alert(1)</script>" not in html_ficha
+            assert "&lt;script&gt;" in html_ficha
+            assert "&lt;b&gt;x&lt;/b&gt;" in html_ficha
+
+            def estado_quebrado(*_args, **_kwargs):
+                raise RuntimeError("falha simulada")
+
+            original_estado_atual = jogo.estado_atual
+            original_disable = logging.root.manager.disable
+            jogo.estado_atual = estado_quebrado
+            logging.disable(logging.CRITICAL)
+            try:
+                dados_sem_jogo = dashboard.carregar_dados()
+                assert dados_sem_jogo["jogo"] is None
+                html_sem_jogo = dashboard.gerar_html(dados_sem_jogo)
+                assert "Ficha do personagem" not in html_sem_jogo
+                assert "Volume por sessao" in html_sem_jogo
+                dados_sem_jogo["jogo"] = {"nivel": 1}
+                html_ficha_invalida = dashboard.gerar_html(dados_sem_jogo)
+                assert "Ficha do personagem" not in html_ficha_invalida
+                assert "Volume por sessao" in html_ficha_invalida
+            finally:
+                jogo.estado_atual = original_estado_atual
+                logging.disable(original_disable)
+
             conn = sqlite3.connect(test_db)
             try:
                 assert conn.execute("SELECT COUNT(*) FROM training_sessions").fetchone()[0] == 2
@@ -404,6 +455,7 @@ def main():
             db_ops.DATA_DIR = original_data_dir
             telegram_poller.DASHBOARD_OUTPUT = original_output
             telegram_poller.send = original_send
+            telegram_poller.telegram_call = original_telegram_call
             gc.collect()
 
 

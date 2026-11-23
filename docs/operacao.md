@@ -70,6 +70,16 @@ TELEGRAM_TOKEN=seu_token_real
 /volume         Mostra estimativa de volume
 /status         Mostra progresso
 /desfazer       Limpa o ultimo registro
+/menu           Menu do heroi em botoes
+/perfil         Ficha do personagem (imagem e texto)
+/chefes         Chefes e HP restante ate o proximo rank
+/semana         Mapa da semana e missoes
+/missoes        Missoes da semana
+/conquistas     Conquistas
+/diario         Diario de aventura
+/loja           Loja; /loja coringa compra um coringa extra
+/pausa N        Pausa de N dias; /pausa fim volta
+/app            Abre a ficha completa no Mini App
 /ajuda          Mostra ajuda
 ```
 
@@ -93,6 +103,12 @@ RPE.
 
 Ao registrar o ultimo exercicio, o bot envia automaticamente o resumo da sessao.
 Nao e necessario executar outro comando.
+
+Depois do resumo vem a tela de vitoria do jogo (EXP, ouro, missoes, chefes,
+conquistas e level up, com imagem e, no level up, um som curto) e o HUD
+fixado no topo do chat e atualizado. Em lesao, doenca ou viagem, use
+`/pausa N` para proteger a sequencia e `/pausa fim` ao voltar. As imagens
+exigem `pillow` (em `requirements.txt`); sem ele o jogo segue so em texto.
 
 Planos de treino:
 

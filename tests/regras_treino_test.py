@@ -117,6 +117,7 @@ def main():
     original_ods_session = ods_ops.SESSION_FILE
     original_poller_session = telegram_poller.SESSION_FILE
     original_send = telegram_poller.send
+    original_telegram_call = telegram_poller.telegram_call
     mensagens = []
 
     with tempfile.TemporaryDirectory(prefix="limulus-regras-") as temp_dir:
@@ -130,6 +131,7 @@ def main():
             ods_ops.SESSION_FILE = test_session
             telegram_poller.SESSION_FILE = test_session
             telegram_poller.send = lambda text, **kwargs: mensagens.append(text)
+            telegram_poller.telegram_call = lambda *args, **kwargs: (False, "teste sem rede")
 
             db_ops.init_db()
             conn = sqlite3.connect(test_db)
@@ -433,6 +435,7 @@ def main():
             ods_ops.SESSION_FILE = original_ods_session
             telegram_poller.SESSION_FILE = original_poller_session
             telegram_poller.send = original_send
+            telegram_poller.telegram_call = original_telegram_call
             gc.collect()
 
 

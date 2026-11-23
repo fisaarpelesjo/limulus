@@ -25,10 +25,14 @@ comandos fica em [`docs/comandos.md`](docs/comandos.md).
   `temp/dashboard-treino.html`.
 - Backup/exportacao/restauracao: [`gerenciar_dados.py`](gerenciar_dados.py).
 - Extracao de frames: [`gerar_frames.py`](gerar_frames.py).
-- Schema SQLite atual: `SCHEMA_VERSION = 15`, em
+- Schema SQLite atual: `SCHEMA_VERSION = 16`, em
   [`limulus/db_ops.py`](limulus/db_ops.py).
 - Fonte da verdade do treino: SQLite, especialmente `training_plans` e
   `training_plan_exercises`.
+- Jogo estilo JRPG: [`limulus/jogo.py`](limulus/jogo.py) (regras),
+  `jogo_visual.py`/`jogo_sprites.py` (imagens com Pillow) e o Mini App
+  [`docs/app/index.html`](docs/app/index.html), publicado pelo GitHub Pages em
+  `https://fisaarpelesjo.github.io/limulus/app/`.
 
 O projeto foi desenhado para uso local: o bot escreve no SQLite, o dashboard le o
 mesmo banco, e os arquivos auxiliares ficam fora do versionamento quando sao
@@ -49,8 +53,11 @@ estado de maquina.
 │   ├── telegram_poller.py        # bot Telegram via long polling
 │   ├── dashboard.py              # carga de dados e HTML do dashboard
 │   ├── backup_ops.py             # backup SQLite, exportacao JSON e restauracao
+│   ├── jogo.py                   # jogo estilo JRPG: EXP, nivel, chefes, missoes
+│   ├── jogo_visual.py            # telas do jogo em PNG (Pillow)
+│   ├── jogo_sprites.py           # pixel art original e fonte bitmap com acentos
 │   ├── video_ops.py              # wrapper ffmpeg para frames
-│   └── assets/                   # assets anatomicos e mapa muscular
+│   └── assets/                   # assets anatomicos, mapa muscular e som do jogo
 ├── data/
 │   └── limulus.db         # banco SQLite versionado
 ├── docs/
@@ -59,6 +66,7 @@ estado de maquina.
 │   ├── banco-de-dados.md         # detalhes de SQLite e fonte da verdade
 │   ├── bot-telegram.md           # fluxo do bot e falhas comuns
 │   ├── operacao.md               # rotina local e troubleshooting
+│   ├── app/index.html            # Mini App do jogo (GitHub Pages)
 │   └── melhorias-futuras.md      # roadmap tecnico
 ├── tests/
 │   ├── smoke_test.py
@@ -67,6 +75,9 @@ estado de maquina.
 │   ├── backup_export_test.py
 │   ├── telegram_falhas_test.py
 │   ├── video_ops_test.py
+│   ├── jogo_test.py
+│   ├── jogo_visual_test.py
+│   ├── app_test.py
 │   └── e2e_training_flow_test.py
 ├── videos/
 │   ├── entrada/                  # videos a processar
@@ -139,6 +150,9 @@ python tests/backup_export_test.py
 python tests/telegram_falhas_test.py
 python tests/video_ops_test.py
 python tests/e2e_training_flow_test.py
+python tests/jogo_test.py
+python tests/jogo_visual_test.py
+python tests/app_test.py
 ```
 
 No Linux/macOS, use `python3` se `python` apontar para Python 2.
@@ -208,7 +222,16 @@ barra.
 /cintura        Consulta cintura atual, variacao e ultimas medicoes
 /status         Mostra exercicio atual e progresso
 /desfazer       Remove carga e RPE do ultimo exercicio preenchido
-/perfil         Mostra nivel, EXP, sequencia semanal e coringas
+/menu           Menu do heroi em botoes
+/perfil         Ficha do personagem: nivel, classe, atributos, ouro e sequencia
+/chefes         Chefes de cada movimento e HP restante ate o proximo rank
+/semana         Mapa da semana e missoes
+/missoes        Missoes da semana
+/conquistas     Conquistas desbloqueadas
+/diario         Diario de aventura
+/loja           Loja; /loja coringa compra um coringa extra
+/pausa N        Pausa de N dias (ate 90); /pausa fim volta
+/app            Abre a ficha completa no Mini App
 /ajuda          Mostra ajuda principal
 80              Registra 80 kg no proximo exercicio pendente
 80 8            Registra 80 kg com RPE 8
@@ -309,6 +332,24 @@ Ao concluir a sessao, `db_ops.get_session_summary(session_id)` calcula:
 
 A comparacao usa a sessao anterior com a mesma sequencia de exercicios. Isso
 evita comparar planos diferentes como se fossem equivalentes.
+
+## Jogo Estilo JRPG
+
+`limulus/jogo.py` transforma o historico em um personagem: EXP por presenca e
+por exercicio com RPE certo, recordes, semanas cumpridas e missoes semanais;
+nivel e titulo; ouro e loja (coringa extra); sequencia semanal com coringas e
+pausas declaradas; conquistas; chefes por padrao de movimento com ranks de
+Ferro a Diamante pela razao 1RM estimado / peso corporal (aproximacoes de
+padroes publicos de forca, so para o jogo); atributos FOR, VIG e DIS; classe
+e diario. Tudo e recalculado do historico; so compras, pausas e a mensagem
+fixada ficam nas tabelas do schema 16.
+
+Depois do resumo, o bot envia a tela de vitoria (barra de EXP animada por
+edicoes, confete em level up ou semana completa, imagem em pixel art e um som
+curto de level up) e atualiza o HUD fixado no topo do chat. `/app` abre o Mini
+App no GitHub Pages com o estado no fragmento `#d=` da URL. Falha no jogo so
+gera log e nunca interrompe o treino. Detalhes em
+[`docs/bot-telegram.md`](docs/bot-telegram.md).
 
 ## Progressao De Carga
 
@@ -490,7 +531,7 @@ O banco fica em `data/limulus.db`. O schema e migrado por
 6. semeia grupos musculares padrao;
 7. semeia o plano de treino padrao quando necessario.
 
-Versao atual: `SCHEMA_VERSION = 15`.
+Versao atual: `SCHEMA_VERSION = 16`.
 
 Tabelas principais:
 
@@ -507,6 +548,9 @@ training_plan_exercises
 body_weights
 waist_measurements
 body_profile
+jogo_estado
+jogo_compras
+jogo_pausas
 schema_migrations
 ```
 
@@ -524,6 +568,8 @@ Colunas importantes:
 - `body_weights`: `weight_kg`, `recorded_at`, `source`.
 - `waist_measurements`: `circumference_cm`, `recorded_at`, `source`.
 - `body_profile`: `height_cm`, `age_years`, `updated_at`.
+- `jogo_estado`: `chave`, `valor`; `jogo_compras`: `item`, `ouro`,
+  `criado_em`; `jogo_pausas`: `inicio`, `fim`, `motivo`.
 
 `training_sessions` inclui `started_at` e `completed_at` desde o schema 13.
 Nao assumir colunas que nao existem, como `plan_name`, `exercise`, `logged_at`,
@@ -562,6 +608,7 @@ Resumo das versoes:
 13  Adiciona started_at/completed_at em training_sessions e cria training_buttons
 14  Renomeia o plano A antigo para Forca e cria os planos A e B de hipertrofia
 15  Cria os planos C, D e E e refaz A a E (segunda a sexta, Zercher)
+16  Cria jogo_estado, jogo_compras e jogo_pausas (jogo estilo JRPG)
 ```
 
 Mudancas de catalogo que precisam valer para bancos novos devem atualizar
@@ -609,7 +656,9 @@ Secoes principais:
 - filtros rapidos;
 - relatorio semanal;
 - peso corporal, cintura, IMC e cintura/altura;
-- dieta atual, macros, metas e micronutrientes.
+- dieta atual, macros, metas e micronutrientes;
+- ficha do personagem do jogo (nivel, EXP, atributos, chefes, missoes e
+  conquistas), omitida se o calculo do jogo falhar.
 
 Indicadores corporais:
 
@@ -776,6 +825,9 @@ tests/backup_export_test.py      Backup, exportacao e restauracao
 tests/telegram_falhas_test.py    Rede, token e espera gradual do polling
 tests/video_ops_test.py          ffmpeg, formatos, limpeza e comandos
 tests/e2e_training_flow_test.py  Fluxo local completo de treino
+tests/jogo_test.py               Regras do jogo e fluxo do bot com o jogo
+tests/jogo_visual_test.py        Telas PNG, fonte bitmap e sprites
+tests/app_test.py                Mini App e JSON do fragmento
 ```
 
 Comando completo:
@@ -788,6 +840,9 @@ python tests/backup_export_test.py
 python tests/telegram_falhas_test.py
 python tests/video_ops_test.py
 python tests/e2e_training_flow_test.py
+python tests/jogo_test.py
+python tests/jogo_visual_test.py
+python tests/app_test.py
 ```
 
 Para mudancas pequenas, rode no minimo o teste mais proximo da area alterada e

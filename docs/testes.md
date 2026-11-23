@@ -115,6 +115,27 @@ python tests/telegram_falhas_test.py
 Simula token invalido, falha temporaria de rede e duas falhas de envio antes do
 sucesso. Nenhuma chamada real e feita ao Telegram.
 
+## Testes Do Jogo
+
+```bash
+python tests/jogo_test.py
+python tests/jogo_visual_test.py
+python tests/app_test.py
+```
+
+`jogo_test.py` cobre as regras de `limulus/jogo.py` (EXP, nivel, ouro,
+sequencia, coringas, pausas, loja, missoes, conquistas, chefes e atributos) e
+o fluxo do bot em banco temporario. `jogo_visual_test.py` gera as quatro
+telas em PNG com Pillow e confere largura, fonte bitmap, sprites, estado vazio
+e level up; com
+`LIMULUS_AMOSTRAS=<pasta>` grava as imagens para inspecao visual.
+`app_test.py` confere o Mini App `docs/app/index.html` e o JSON que vai no
+fragmento `#d=`.
+
+As chamadas de rede do jogo passam por `telegram_poller.telegram_call`; testes
+devem substituir essa funcao (alem de `telegram_poller.HTTP`) para nunca falar
+com o Telegram.
+
 ## Ordem Recomendada
 
 ```bash
@@ -126,6 +147,9 @@ python tests/e2e_training_flow_test.py
 python tests/dashboard_test.py
 python tests/backup_export_test.py
 python tests/telegram_falhas_test.py
+python tests/jogo_test.py
+python tests/jogo_visual_test.py
+python tests/app_test.py
 ```
 
 Se o teste de fumaca falhar, corrija ambiente primeiro. Se ele passar e o E2E

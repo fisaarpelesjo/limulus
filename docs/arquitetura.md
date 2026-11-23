@@ -17,17 +17,24 @@ manter tudo simples: Python, SQLite e API HTTP do Telegram.
 ├── data/
 │   └── limulus.db
 ├── docs/
+│   └── app/index.html        # Mini App do jogo (GitHub Pages)
 ├── limulus/
 │   ├── __init__.py
 │   ├── backup_ops.py
 │   ├── dashboard.py
 │   ├── db_ops.py
+│   ├── jogo.py
+│   ├── jogo_sprites.py
+│   ├── jogo_visual.py
 │   ├── ods_ops.py
 │   ├── telegram_poller.py
 │   └── video_ops.py
 └── tests/
     ├── backup_export_test.py
+    ├── app_test.py
     ├── dashboard_test.py
+    ├── jogo_test.py
+    ├── jogo_visual_test.py
     ├── regras_treino_test.py
     ├── smoke_test.py
     ├── telegram_falhas_test.py
@@ -55,12 +62,18 @@ start_bot.py
   -> limulus.telegram_poller
        -> limulus.ods_ops
        -> limulus.db_ops
+       -> limulus.jogo
+            -> limulus.db_ops
+       -> limulus.jogo_visual (Pillow, carregado sob demanda)
+            -> limulus.jogo
+            -> limulus.jogo_sprites
   -> limulus.ods_ops
        -> limulus.db_ops
 
 gerar_dashboard.py
   -> limulus.dashboard
        -> SQLite
+       -> limulus.jogo (secao "Ficha do personagem")
 
 gerenciar_dados.py
   -> limulus.backup_ops
@@ -71,7 +84,9 @@ gerar_frames.py
        -> ffmpeg
 ```
 
-`db_ops.py` fica na base e nao deve importar a camada do bot.
+`db_ops.py` fica na base e nao deve importar a camada do bot. `jogo.py` so
+depende de `db_ops`; `jogo_visual.py` e importado pelo bot apenas quando precisa
+gerar uma imagem, e sem Pillow o jogo segue so em texto.
 
 `db_ops.init_db()` tambem controla a evolucao do esquema. Cada migracao e
 aplicada em ordem e registrada em `schema_migrations`; um banco com versao mais
@@ -95,6 +110,10 @@ O bot usa long polling. Isso significa:
 - nao precisa abrir porta
 - precisa apenas de internet de saida
 - chama `getUpdates` periodicamente
+
+O Mini App do jogo (`docs/app/index.html`) e uma pagina estatica publicada pelo
+GitHub Pages; o bot so envia o link com o estado no fragmento `#d=`, entao
+continua sem servidor proprio.
 
 Falhas temporarias de rede usam espera gradual de 3 ate 60 segundos. Erros
 permanentes de token encerram o polling. Os logs registram horario, nivel,

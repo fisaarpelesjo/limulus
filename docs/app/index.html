@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Ficha do Herói</title>
+<!--
+  Mini App do Limulus: ficha do personagem no estilo JRPG.
+  Os dados chegam somente no fragmento da URL, que nunca vai ao servidor:
+    #d=<base64url do JSON UTF-8 gerado por jogo.exportar_para_app()>
+  O padding "=" do base64 e opcional. Parametros extras do Telegram
+  (tgWebAppData etc.) podem vir depois, separados por "&".
+  Sem fetch, sem armazenamento e sem analytics. Sem fragmento valido, a pagina
+  mostra um estado de demonstracao.
+-->
+<script>
+  // Guarda o fragmento antes do script do Telegram ler ou mexer no hash.
+  window.__fragmentoOriginal = window.location.hash || "";
+</script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --borda-fora: #f4f6ff;
+    --borda-linha: #c9d4ff;
+    --sombra: #040924;
+    --janela-topo: #2440b8;
+    --janela-base: #0b1660;
+    --texto: #ffffff;
+    --texto-suave: #b8c6ff;
+    --ouro: #ffd75e;
+    --trilho: #050c3a;
+    --exp-a: #ffe58a;
+    --exp-b: #f2a833;
+    --hp-a: #ff8a7a;
+    --hp-b: #d8323a;
+    --for-a: #ffb07a;
+    --for-b: #e0592a;
+    --vig-a: #9ff09a;
+    --vig-b: #2fae4e;
+    --dis-a: #9fe6ff;
+    --dis-b: #2c8fd8;
+    --mus-a: #e2c4ff;
+    --mus-b: #8f55d8;
+    /* Bordas da pagina seguem o tema do Telegram; as janelas ficam sempre azuis. */
+    --fundo: var(--tg-theme-bg-color, #070d2e);
+    --fonte: "Pixelify Sans", "VT323", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--fundo); -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--fundo);
+    color: var(--texto);
+    font-family: var(--fonte);
+    font-size: 16px;
+    line-height: 1.35;
+    text-shadow: 2px 2px 0 var(--sombra);
+    overflow-x: hidden;
+    -webkit-font-smoothing: none;
+  }
+  .palco {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 12px 12px 172px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Janela classica: gradiente azul, borda branca dupla, cantos arredondados. */
+  .janela {
+    position: relative;
+    background: linear-gradient(180deg, var(--janela-topo) 0%, var(--janela-base) 100%);
+    border: 3px solid var(--borda-fora);
+    border-radius: 9px;
+    box-shadow:
+      inset 0 0 0 2px var(--sombra),
+      inset 0 0 0 3px var(--borda-linha),
+      0 0 0 2px var(--sombra),
+      0 5px 0 2px rgba(0, 0, 0, .35);
+    padding: 12px 14px;
+  }
+  .janela h2 {
+    margin: 0 0 10px;
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--ouro);
+    letter-spacing: .5px;
+  }
+  .suave { color: var(--texto-suave); }
+  .ouro { color: var(--ouro); }
+
+  .aviso {
+    font-size: 14px;
+    padding: 8px 12px;
+    color: var(--texto-suave);
+  }
+  .aviso[hidden] { display: none; }
+
+  /* Cabecalho */
+  .cabecalho { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: end; }
+  .cabecalho .titulo { font-size: 24px; font-weight: 700; line-height: 1.1; }
+  .cabecalho .classe { color: var(--texto-suave); font-size: 16px; }
+  .nivel { text-align: right; line-height: .9; }
+  .nivel small { display: block; font-size: 14px; color: var(--texto-suave); }
+  .nivel b { display: inline-block; font-size: 46px; font-weight: 700; color: var(--ouro); }
+  .nivel b.pop { animation: pop .7s steps(7) both; }
+  @keyframes pop {
+    0% { transform: scale(.2); opacity: 0; }
+    55% { transform: scale(1.35); opacity: 1; }
+    80% { transform: scale(.92); }
+    100% { transform: scale(1); }
+  }
+  .bolsa { grid-column: 1 / -1; display: flex; gap: 16px; font-size: 15px; flex-wrap: wrap; }
+
+  /* Medidores */
+  .medidor { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; margin: 7px 0; }
+  .medidor .rot { font-weight: 700; }
+  .medidor .val { font-size: 15px; min-width: 2.5em; text-align: right; }
+  .trilho {
+    height: 12px;
+    background: var(--trilho);
+    border: 2px solid var(--borda-fora);
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px var(--sombra);
+    overflow: hidden;
+  }
+  .enche {
+    height: 100%;
+    width: 0;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.45) 0 3px, transparent 3px),
+      linear-gradient(90deg, var(--a, var(--exp-a)), var(--b, var(--exp-b)));
+    transition: width 1.1s steps(22);
+  }
+  .enche.exp { --a: var(--exp-a); --b: var(--exp-b); }
+  .enche.hp  { --a: var(--hp-a);  --b: var(--hp-b); }
+  .enche.FOR { --a: var(--for-a); --b: var(--for-b); }
+  .enche.VIG { --a: var(--vig-a); --b: var(--vig-b); }
+  .enche.DIS { --a: var(--dis-a); --b: var(--dis-b); }
+  .enche.mus { --a: var(--mus-a); --b: var(--mus-b); }
+  .enche.ok  { --a: var(--vig-a); --b: var(--vig-b); }
+  .trilho.grande { height: 16px; }
+
+  .linha-info { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+  .grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .grade-2 div { display: flex; justify-content: space-between; gap: 6px; }
+  .separador { height: 2px; background: var(--borda-linha); opacity: .35; margin: 12px 0; border: 0; }
+  .dominante { color: var(--ouro); font-size: 13px; }
+
+  /* Semana */
+  .semana { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+  .dia { font-size: 13px; color: var(--texto-suave); }
+  .dia .casa {
+    margin: 3px auto 0;
+    width: 34px; height: 34px;
+    max-width: 100%;
+    border: 2px solid var(--borda-linha);
+    border-radius: 5px;
+    background: var(--trilho);
+    display: grid; place-items: center;
+  }
+  .dia.f .casa { background: linear-gradient(180deg, var(--exp-a), var(--exp-b)); border-color: var(--borda-fora); }
+  .dia.h .casa { border-color: var(--ouro); animation: pisca 1s steps(2) infinite; }
+  .dia.h { color: var(--ouro); }
+  .dia.x .casa { border-color: #ff8a7a; }
+  .dia.d .casa, .dia.z .casa { opacity: .7; border-style: dashed; }
+  .legenda { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 13px; color: var(--texto-suave); }
+  .legenda span { display: inline-flex; align-items: center; gap: 4px; }
+  svg.ico { width: 18px; height: 18px; shape-rendering: crispEdges; display: block; }
+  .legenda svg.ico { width: 13px; height: 13px; }
+
+  /* Listas */
+  .lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .lista li { min-width: 0; }
+  .nome { font-weight: 600; font-size: 17px; }
+  .detalhe { font-size: 14px; color: var(--texto-suave); }
+  .topo-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .selo {
+    font-size: 13px; padding: 1px 6px; border: 2px solid var(--borda-linha);
+    border-radius: 4px; white-space: nowrap; background: var(--trilho);
+  }
+  .selo.r0 { color: #d6d6e0; } .selo.r1 { color: #f0a868; } .selo.r2 { color: #e8ecff; }
+  .selo.r3 { color: var(--ouro); } .selo.r4 { color: #a9f3ec; } .selo.r5 { color: #b5e6ff; border-color: var(--borda-fora); }
+  .pips { display: flex; gap: 3px; margin: 6px 0 4px; }
+  .pips i { width: 14px; height: 6px; background: var(--trilho); border: 1px solid var(--borda-linha); }
+  .pips i.on { background: var(--ouro); border-color: var(--borda-fora); }
+
+  .conq { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: start; }
+  .conq.trancada { opacity: .5; }
+  .conq.trancada .nome { color: var(--texto-suave); }
+  .conq svg.ico { width: 22px; height: 22px; margin-top: 2px; }
+  .contador { font-size: 15px; margin: -4px 0 10px; color: var(--texto-suave); }
+
+  .carimbo { color: var(--vig-a); font-size: 14px; white-space: nowrap; }
+
+  .diario li { padding-left: 12px; border-left: 3px solid var(--borda-linha); font-size: 15px; }
+  .diario li:first-child { border-left-color: var(--ouro); }
+
+  .vazio { color: var(--texto-suave); font-size: 15px; margin: 4px 0; }
+
+  /* Grafico */
+  .grafico { position: relative; }
+  .grafico svg { width: 100%; height: auto; display: block; touch-action: none; }
+  .grafico .dica {
+    position: absolute; top: 0; pointer-events: none;
+    background: var(--janela-base); border: 2px solid var(--borda-fora); border-radius: 5px;
+    padding: 2px 6px; font-size: 13px; white-space: nowrap; transform: translateX(-50%);
+  }
+  .grafico .dica[hidden] { display: none; }
+
+  /* Menu de comandos */
+  .menu {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+    pointer-events: none;
+  }
+  .menu .janela {
+    max-width: 456px; margin: 0 auto; pointer-events: auto;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 4px; padding: 8px 8px;
+  }
+  .comando {
+    appearance: none; background: none; border: 0; color: var(--texto);
+    font: inherit; font-size: 16px; text-shadow: inherit;
+    display: flex; align-items: center; gap: 3px; padding: 7px 2px; min-height: 36px;
+    cursor: pointer; text-align: left; white-space: nowrap; border-radius: 4px;
+  }
+  .comando .mao { width: 20px; flex: none; visibility: hidden; }
+  .comando .mao svg { width: 20px; height: 14px; display: block; shape-rendering: crispEdges; filter: drop-shadow(1px 1px 0 var(--sombra)); }
+  .comando[aria-selected="true"] { color: var(--ouro); }
+  .comando[aria-selected="true"] .mao { visibility: visible; animation: aponta .8s steps(2) infinite; }
+  .comando:focus-visible { outline: 2px dashed var(--ouro); outline-offset: 1px; }
+  @keyframes aponta { 50% { transform: translateX(3px); } }
+  @keyframes pisca { 50% { border-color: transparent; } }
+
+  .painel[hidden] { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="palco">
+  <div class="janela aviso" id="aviso" hidden>Dados de demonstração. Abra pelo bot para ver a sua ficha.</div>
+
+  <header class="janela cabecalho" aria-label="Personagem">
+    <div>
+      <div class="titulo" id="titulo">Aprendiz</div>
+      <div class="classe" id="classe">Monge</div>
+    </div>
+    <div class="nivel"><small>Lv</small><b id="nivel">1</b></div>
+    <div class="bolsa">
+      <span><span class="suave">Ouro</span> <span class="ouro" id="ouro-topo">0</span></span>
+      <span><span class="suave">Treinos</span> <span id="treinos-topo">0</span></span>
+      <span><span class="suave">Recordes</span> <span id="recordes-topo">0</span></span>
+    </div>
+  </header>
+
+  <section class="janela painel" id="p-status" role="tabpanel" aria-labelledby="t-status"></section>
+  <section class="janela painel" id="p-chefes" role="tabpanel" aria-labelledby="t-chefes" hidden></section>
+  <section class="janela painel" id="p-conquistas" role="tabpanel" aria-labelledby="t-conquistas" hidden></section>
+  <section class="janela painel" id="p-missoes" role="tabpanel" aria-labelledby="t-missoes" hidden></section>
+  <section class="janela painel" id="p-diario" role="tabpanel" aria-labelledby="t-diario" hidden></section>
+  <section class="janela painel" id="p-evolucao" role="tabpanel" aria-labelledby="t-evolucao" hidden></section>
+  <section class="janela painel" id="p-musculos" role="tabpanel" aria-labelledby="t-musculos" hidden></section>
+</main>
+
+<nav class="menu" aria-label="Menu">
+  <div class="janela" role="tablist" id="menu"></div>
+</nav>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // Catalogos fixos (espelham limulus/jogo.py)
+  // ---------------------------------------------------------------------
+  var RANKS = ["Ferro", "Bronze", "Prata", "Ouro", "Platina", "Diamante"];
+  var CONQUISTAS = [
+    ["primeiro_treino", "Primeiro passo", "Concluir o primeiro treino"],
+    ["treinos_10", "Aventureiro", "Concluir 10 treinos"],
+    ["treinos_50", "Veterano", "Concluir 50 treinos"],
+    ["treinos_100", "Centurião", "Concluir 100 treinos"],
+    ["treinos_250", "Imortal", "Concluir 250 treinos"],
+    ["semana_1", "Semana cheia", "Fechar uma semana com 5 treinos"],
+    ["sequencia_4", "Ritmo de batalha", "Sequência de 4 semanas"],
+    ["sequencia_12", "Estação de ferro", "Sequência de 12 semanas"],
+    ["recorde_1", "Primeiro recorde", "Quebrar um recorde de carga"],
+    ["recordes_10", "Quebra-limites", "Quebrar 10 recordes"],
+    ["recordes_50", "Lenda viva", "Quebrar 50 recordes"],
+    ["nivel_10", "Nível 10", "Chegar ao nível 10"],
+    ["nivel_20", "Nível 20", "Chegar ao nível 20"],
+    ["nivel_30", "Nível 30", "Chegar ao nível 30"],
+    ["nivel_50", "Nível 50", "Chegar ao nível 50"],
+    ["chefe_1", "Caçador", "Derrotar o primeiro chefe (rank Bronze)"],
+    ["chefes_5", "Matador de chefes", "Somar 5 ranks entre os chefes"],
+    ["perfeita_1", "Golpe preciso", "Uma sessão inteira no RPE 8–9"],
+    ["perfeitas_10", "Mestre do RPE", "10 sessões inteiras no RPE 8–9"],
+    ["madrugador_5", "Madrugador", "5 treinos começados antes das 7h"],
+    ["coruja_5", "Coruja", "5 treinos começados depois das 21h"],
+    ["missoes_10", "Caçador de missões", "Cumprir 10 missões semanais"]
+  ];
+  var DIAS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+  // Codigos de jogo.CODIGOS_DIA.
+  var ESTADOS_DIA = {
+    f: "feito", h: "hoje", p: "pendente", x: "perdido", d: "descanso", z: "pausa"
+  };
+  var ABAS = [
+    ["status", "Status"], ["chefes", "Chefes"], ["conquistas", "Conquistas"],
+    ["missoes", "Missões"], ["diario", "Diário"], ["evolucao", "Evolução"],
+    ["musculos", "Músculos"]
+  ];
+
+  // Estado de demonstracao: inventado, sem dados de ninguem.
+  var DEMO = {
+    v: 1, nivel: 14, titulo: "Soldado", classe: "Mestre", classe_base: "DIS",
+    exp: [3412, 182, 360], atr: { FOR: 38, VIG: 21, DIS: 74 }, ouro: 455,
+    seq: [3, 6], cor: [1, 0], sem: ["f", "f", "h", "p", "p", "d", "d"],
+    chefes: [
+      ["Empurrar", "Golem de Ferro", 2, 40, 72.5, 80.0],
+      ["Agachar", "Ogro da Montanha", 1, 70, 88.0, 120.0],
+      ["Quadril", "Serpente do Abismo", 2, 55, 98.4, 120.0],
+      ["Puxar", "Grifo Sombrio", 2, 12, 78.2, 80.0],
+      ["Ombro", "Titã do Céu", 0, 100, 0.0, 28.0]
+    ],
+    conq: [
+      ["primeiro_treino", "2026-08-03"], ["treinos_10", "2026-08-17"],
+      ["treinos_50", "2026-10-26"], ["semana_1", "2026-08-07"],
+      ["sequencia_4", "2026-09-04"], ["recorde_1", "2026-08-05"],
+      ["recordes_10", "2026-09-09"], ["nivel_10", "2026-09-30"],
+      ["chefe_1", "2026-08-10"], ["chefes_5", "2026-10-14"],
+      ["perfeita_1", "2026-08-04"], ["missoes_10", "2026-10-02"]
+    ],
+    miss: [
+      ["Registrar o RPE em 15 exercícios", 10, 15, 0],
+      ["Treinar 3 dias seguidos", 2, 3, 0],
+      ["Uma sessão inteira no RPE 8–9", 1, 1, 1]
+    ],
+    mus: [
+      ["Peitoral", 17], ["Dorsais", 16], ["Quadríceps", 14], ["Deltoides", 13],
+      ["Tríceps", 12], ["Glúteos", 11], ["Isquiotibiais", 10], ["Bíceps", 9],
+      ["Antebraços", 7]
+    ],
+    hist: [
+      ["2026-08-03", 1], ["2026-08-07", 2], ["2026-08-14", 3], ["2026-08-21", 4],
+      ["2026-08-28", 5], ["2026-09-04", 6], ["2026-09-11", 7], ["2026-09-18", 8],
+      ["2026-09-25", 9], ["2026-09-30", 10], ["2026-10-07", 11], ["2026-10-16", 11],
+      ["2026-10-23", 12], ["2026-10-30", 12], ["2026-11-06", 13], ["2026-11-13", 13],
+      ["2026-11-18", 14]
+    ],
+    diario: [
+      "13/11 · o herói encarou o Treino E",
+      "16/11 · a jornada seguiu com o Treino A · recorde em Supino reto (barra)",
+      "17/11 · mais uma batalha: o Treino B",
+      "18/11 · o guerreiro voltou para o Treino C · subiu para o Lv 14",
+      "19/11 · a espada cantou no Treino D · missão cumprida: Uma sessão inteira no RPE 8–9",
+      "20/11 · o herói encarou o Treino E · semana completa!",
+      "23/11 · a jornada seguiu com o Treino A",
+      "24/11 · mais uma batalha: o Treino B"
+    ],
+    treinos: 61, recordes: 24
+  };
+
+  // ---------------------------------------------------------------------
+  // Leitura do fragmento: #d=<base64url do JSON UTF-8>
+  // ---------------------------------------------------------------------
+  function base64urlParaTexto(b64url) {
+    var b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    var binario = atob(b64);
+    var bytes = new Uint8Array(binario.length);
+    for (var i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+
+  function lerFragmento(hash) {
+    var corpo = (hash || "").replace(/^#/, "");
+    var partes = corpo.split("&");
+    for (var i = 0; i < partes.length; i++) {
+      if (partes[i].indexOf("d=") === 0) {
+        var valor = partes[i].slice(2);
+        try { valor = decodeURIComponent(valor); } catch (e) { /* segue cru */ }
+        return valor;
+      }
+    }
+    return null;
+  }
+
+  function valido(d) {
+    return d && typeof d === "object" && d.v === 1 && typeof d.nivel === "number" &&
+      Array.isArray(d.exp) && d.atr && typeof d.atr === "object";
+  }
+
+  function carregarDados() {
+    var bruto = lerFragmento(window.__fragmentoOriginal || window.location.hash);
+    if (bruto) {
+      try {
+        var d = JSON.parse(base64urlParaTexto(bruto));
+        if (valido(d)) return { dados: d, demo: false };
+      } catch (e) { /* cai na demonstracao */ }
+    }
+    return { dados: DEMO, demo: true };
+  }
+
+  // ---------------------------------------------------------------------
+  // Utilitarios de DOM (sempre textContent: nada de HTML vindo dos dados)
+  // ---------------------------------------------------------------------
+  function el(tag, attrs, filhos) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k === "text") n.textContent = attrs[k];
+      else n.setAttribute(k, attrs[k]);
+    }
+    (filhos || []).forEach(function (f) {
+      if (f == null) return;
+      n.appendChild(typeof f === "string" ? document.createTextNode(f) : f);
+    });
+    return n;
+  }
+  function svgDe(marcacao) {
+    var t = document.createElement("template");
+    t.innerHTML = marcacao.trim();
+    return t.content.firstChild;
+  }
+  function num(n) { return Number(n || 0).toLocaleString("pt-BR"); }
+  function kg(n) {
+    return Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " kg";
+  }
+  function dataBR(iso) {
+    if (!iso || typeof iso !== "string") return "";
+    var p = iso.split("-");
+    return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : iso;
+  }
+  function arr(x) { return Array.isArray(x) ? x : []; }
+
+  function medidor(rotulo, atual, total, classe, valorTexto, grande) {
+    var pct = total > 0 ? Math.max(0, Math.min(100, 100 * atual / total)) : 0;
+    var enche = el("div", { class: "enche " + classe });
+    enche.dataset.pct = pct.toFixed(1);
+    var trilho = el("div", {
+      class: "trilho" + (grande ? " grande" : ""), role: "progressbar",
+      "aria-label": rotulo, "aria-valuemin": "0", "aria-valuemax": String(total),
+      "aria-valuenow": String(atual)
+    }, [enche]);
+    return el("div", { class: "medidor" }, [
+      el("span", { class: "rot", text: rotulo }), trilho,
+      el("span", { class: "val", text: valorTexto })
+    ]);
+  }
+
+  function animarMedidores(raiz) {
+    var cheios = raiz.querySelectorAll(".enche");
+    cheios.forEach(function (e) { e.style.width = "0"; });
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        cheios.forEach(function (e) { e.style.width = e.dataset.pct + "%"; });
+      });
+    });
+  }
+
+  // Icones em pixel (grade 9x9).
+  function pixelSvg(linhas, cores, classe) {
+    var rects = "";
+    linhas.forEach(function (linha, y) {
+      for (var x = 0; x < linha.length; x++) {
+        var c = cores[linha[x]];
+        if (c) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + c + '"/>';
+      }
+    });
+    return '<svg class="' + (classe || "ico") + '" viewBox="0 0 ' + linhas[0].length + " " +
+      linhas.length + '" aria-hidden="true">' + rects + "</svg>";
+  }
+  var K = "#040924", W = "#ffffff", G = "#ffd75e", R = "#ff8a7a", B = "#b8c6ff";
+  var ICONES = {
+    f: pixelSvg([".........", ".......K.", "......KK.", ".K...KK..", ".KK.KK...", "..KKK....", "...K.....", ".........", "........."], { K: K }),
+    h: pixelSvg([".........", "..W......", "..WW.....", "..WWW....", "..WWWW...", "..WWW....", "..WW.....", "..W......", "........."], { W: G }),
+    p: pixelSvg([".........", ".........", ".........", "...BBB...", "...BBB...", "...BBB...", ".........", ".........", "........."], { B: B }),
+    x: pixelSvg([".........", ".R.....R.", "..R...R..", "...R.R...", "....R....", "...R.R...", "..R...R..", ".R.....R.", "........."], { R: R }),
+    d: pixelSvg([".........", ".........", ".........", ".........", ".BBBBBBB.", ".........", ".........", ".........", "........."], { B: B }),
+    z: pixelSvg([".........", "..BB.BB..", "..BB.BB..", "..BB.BB..", "..BB.BB..", "..BB.BB..", "..BB.BB..", ".........", "........."], { B: B })
+  };
+  var ESTRELA = pixelSvg([
+    "....K....", "...KGK...", "KKKKGKKKK", "KGGGGGGGK", ".KGGGGGK.", "..KGGGK..", ".KGGKGGK.", ".KGK.KGK.", ".KK...KK."
+  ], { K: K, G: G });
+  var CADEADO = pixelSvg([
+    "...BBB...", "..B...B..", "..B...B..", ".BBBBBBB.", ".BBBKBBB.", ".BBBKBBB.", ".BBBBBBB.", ".BBBBBBB.", "........."
+  ], { B: B, K: K });
+  var MAO = pixelSvg([
+    "....KKKKKKKK.",
+    "...KWWWWWWWWK",
+    "KKKWWWWKKKKK.",
+    "KWWWWWWWK....",
+    "KWWWWWWWK....",
+    "KWWWWWWWK....",
+    "KWWWWWWK.....",
+    "KKKKKKKK....."
+  ], { K: K, W: W }, "mao-svg");
+
+  // ---------------------------------------------------------------------
+  // Paineis
+  // ---------------------------------------------------------------------
+  function painelStatus(d) {
+    var p = document.getElementById("p-status");
+    var exp = arr(d.exp);
+    var falta = Math.max(0, (exp[2] || 0) - (exp[1] || 0));
+    p.appendChild(el("h2", { text: "Status" }));
+    p.appendChild(medidor("EXP", exp[1] || 0, exp[2] || 0, "exp",
+      num(exp[1]) + "/" + num(exp[2]), true));
+    p.appendChild(el("div", { class: "linha-info" }, [
+      el("span", { class: "suave", text: "Total " + num(exp[0]) + " EXP" }),
+      el("span", { text: d.nivel >= 99 ? "Nível máximo" : "Faltam " + num(falta) })
+    ]));
+    p.appendChild(el("hr", { class: "separador" }));
+
+    var nomes = { FOR: "Força", VIG: "Vigor", DIS: "Disciplina" };
+    ["FOR", "VIG", "DIS"].forEach(function (k) {
+      var v = (d.atr && d.atr[k]) || 1;
+      var m = medidor(k, v, 99, k, String(v));
+      m.querySelector(".rot").setAttribute("title", nomes[k]);
+      p.appendChild(m);
+    });
+    if (d.classe_base && nomes[d.classe_base]) {
+      p.appendChild(el("div", { class: "dominante", text: "Atributo dominante: " + nomes[d.classe_base] }));
+    }
+    p.appendChild(el("hr", { class: "separador" }));
+
+    var seq = arr(d.seq), cor = arr(d.cor);
+    p.appendChild(el("div", { class: "grade-2" }, [
+      el("div", null, [el("span", { class: "suave", text: "Ouro" }), el("span", { class: "ouro", text: num(d.ouro) })]),
+      el("div", null, [el("span", { class: "suave", text: "Coringas" }), el("span", { text: (cor[0] || 0) + (cor[1] ? " + " + cor[1] : "") })]),
+      el("div", null, [el("span", { class: "suave", text: "Sequência" }), el("span", { text: (seq[0] || 0) + " sem." })]),
+      el("div", null, [el("span", { class: "suave", text: "Melhor" }), el("span", { text: (seq[1] || 0) + " sem." })])
+    ]));
+    p.appendChild(el("hr", { class: "separador" }));
+
+    var sem = arr(d.sem);
+    var grade = el("div", { class: "semana", "aria-label": "Semana atual" });
+    DIAS.forEach(function (nome, i) {
+      var c = ESTADOS_DIA[sem[i]] ? sem[i] : "p";
+      var casa = el("div", { class: "casa" });
+      casa.appendChild(svgDe(ICONES[c]));
+      grade.appendChild(el("div", { class: "dia " + c, title: nome + ": " + ESTADOS_DIA[c],
+        "aria-label": nome + ": " + ESTADOS_DIA[c] }, [nome, casa]));
+    });
+    p.appendChild(el("div", { class: "suave", text: "Semana", style: "margin-bottom:6px" }));
+    p.appendChild(grade);
+    var legenda = el("div", { class: "legenda" });
+    ["f", "h", "p", "x", "d", "z"].forEach(function (c) {
+      var item = el("span");
+      item.appendChild(svgDe(ICONES[c === "f" ? "fLeg" : c] || ICONES[c]));
+      item.appendChild(document.createTextNode(ESTADOS_DIA[c]));
+      legenda.appendChild(item);
+    });
+    p.appendChild(legenda);
+  }
+  // Na legenda o "feito" aparece sem o fundo dourado, entao usa traco claro.
+  ICONES.fLeg = ICONES.f.replace(/#040924/g, "#ffd75e");
+
+  function painelChefes(d) {
+    var p = document.getElementById("p-chefes");
+    p.appendChild(el("h2", { text: "Chefes" }));
+    var lista = el("ul", { class: "lista" });
+    var chefes = arr(d.chefes);
+    if (!chefes.length) p.appendChild(el("p", { class: "vazio", text: "Nenhum chefe à vista ainda." }));
+    chefes.forEach(function (c) {
+      var padrao = c[0], nome = c[1], idx = Math.max(0, Math.min(5, c[2] | 0)),
+          hp = c[3] || 0, e1 = c[4] || 0, alvo = c[5];
+      var pips = el("div", { class: "pips", "aria-label": "Rank " + (idx + 1) + " de 6" });
+      for (var i = 0; i < 6; i++) pips.appendChild(el("i", { class: i <= idx ? "on" : "" }));
+      var detalhe;
+      if (idx >= 5 || alvo == null) {
+        detalhe = "Derrotado em todos os ranks · e1RM " + kg(e1);
+      } else if (!e1) {
+        detalhe = "Sem histórico · alvo " + kg(alvo) + " para " + RANKS[idx + 1];
+      } else {
+        detalhe = "e1RM " + kg(e1) + " → " + kg(alvo) + " para " + RANKS[idx + 1];
+      }
+      lista.appendChild(el("li", null, [
+        el("div", { class: "topo-item" }, [
+          el("span", { class: "nome", text: nome }),
+          el("span", { class: "selo r" + idx, text: RANKS[idx] })
+        ]),
+        el("div", { class: "detalhe", text: padrao }),
+        pips,
+        medidor("HP", hp, 100, "hp", hp + "%"),
+        el("div", { class: "detalhe", text: detalhe })
+      ]));
+    });
+    p.appendChild(lista);
+  }
+
+  function painelConquistas(d) {
+    var p = document.getElementById("p-conquistas");
+    var datas = {};
+    arr(d.conq).forEach(function (c) { if (c && c[0]) datas[c[0]] = c[1]; });
+    var feitas = CONQUISTAS.filter(function (c) { return datas[c[0]]; }).length;
+    p.appendChild(el("h2", { text: "Conquistas" }));
+    p.appendChild(el("div", { class: "contador", text: feitas + " de " + CONQUISTAS.length + " desbloqueadas" }));
+    var lista = el("ul", { class: "lista" });
+    CONQUISTAS.forEach(function (c) {
+      var data = datas[c[0]];
+      var item = el("li", { class: "conq" + (data ? "" : " trancada") });
+      item.appendChild(svgDe(data ? ESTRELA : CADEADO));
+      item.appendChild(el("div", null, [
+        el("div", { class: "nome", text: c[1] }),
+        el("div", { class: "detalhe", text: c[2] + (data ? " · " + dataBR(data) : "") })
+      ]));
+      lista.appendChild(item);
+    });
+    p.appendChild(lista);
+  }
+
+  function painelMissoes(d) {
+    var p = document.getElementById("p-missoes");
+    p.appendChild(el("h2", { text: "Missões da semana" }));
+    var miss = arr(d.miss);
+    if (!miss.length) p.appendChild(el("p", { class: "vazio", text: "Nenhuma missão nesta semana." }));
+    var lista = el("ul", { class: "lista" });
+    miss.forEach(function (m) {
+      var feita = !!m[3];
+      lista.appendChild(el("li", null, [
+        el("div", { class: "topo-item" }, [
+          el("span", { class: "nome", text: m[0] }),
+          feita ? el("span", { class: "carimbo", text: "Cumprida" }) : null
+        ]),
+        medidor("", m[1] || 0, m[2] || 1, feita ? "ok" : "exp", (m[1] || 0) + "/" + (m[2] || 0))
+      ]));
+    });
+    lista.querySelectorAll(".medidor").forEach(function (m) { m.style.gridTemplateColumns = "0 1fr auto"; m.style.gap = "0 8px"; });
+    p.appendChild(lista);
+  }
+
+  function painelDiario(d) {
+    var p = document.getElementById("p-diario");
+    p.appendChild(el("h2", { text: "Diário" }));
+    var textos = arr(d.diario).slice().reverse();
+    if (!textos.length) {
+      p.appendChild(el("p", { class: "vazio", text: "Conclua um treino para escrever a primeira página." }));
+      return;
+    }
+    var lista = el("ul", { class: "lista diario" });
+    textos.forEach(function (t) { lista.appendChild(el("li", { text: String(t) })); });
+    p.appendChild(lista);
+  }
+
+  function painelEvolucao(d) {
+    var p = document.getElementById("p-evolucao");
+    p.appendChild(el("h2", { text: "Evolução do nível" }));
+    var pontos = arr(d.hist).filter(function (h) {
+      return h && /^\d{4}-\d{2}-\d{2}$/.test(String(h[0]));
+    }).map(function (h) {
+      var partes = String(h[0]).split("-");
+      return { t: Date.UTC(+partes[0], +partes[1] - 1, +partes[2]), data: h[0], nivel: +h[1] };
+    }).filter(function (x) { return !isNaN(x.t) && !isNaN(x.nivel); });
+    if (pontos.length < 2) {
+      p.appendChild(el("p", { class: "vazio", text: "O gráfico aparece depois de dois treinos." }));
+      return;
+    }
+    var L = 320, A = 190, me = 30, md = 10, mt = 14, mb = 26;
+    var t0 = pontos[0].t, t1 = pontos[pontos.length - 1].t || t0 + 1;
+    var nMin = 1, nMax = Math.max(2, pontos.reduce(function (m, x) { return Math.max(m, x.nivel); }, 1));
+    function X(t) { return me + (L - me - md) * (t1 === t0 ? 0 : (t - t0) / (t1 - t0)); }
+    function Y(n) { return mt + (A - mt - mb) * (1 - (n - nMin) / (nMax - nMin)); }
+    // Degraus: o nivel so muda no treino seguinte.
+    var caminho = "M" + X(pontos[0].t).toFixed(1) + " " + Y(pontos[0].nivel).toFixed(1);
+    for (var i = 1; i < pontos.length; i++) {
+      caminho += " H" + X(pontos[i].t).toFixed(1) + " V" + Y(pontos[i].nivel).toFixed(1);
+    }
+    var meio = Math.round((nMin + nMax) / 2);
+    var grade = [nMin, meio, nMax].filter(function (v, i, a) { return a.indexOf(v) === i; }).map(function (v) {
+      var y = Y(v).toFixed(1);
+      return '<line x1="' + me + '" x2="' + (L - md) + '" y1="' + y + '" y2="' + y +
+        '" stroke="#c9d4ff" stroke-opacity=".25" stroke-width="1"/>' +
+        '<text x="' + (me - 6) + '" y="' + (+y + 4) + '" text-anchor="end" fill="#b8c6ff" font-size="11">' + v + "</text>";
+    }).join("");
+    var ultimo = pontos[pontos.length - 1];
+    var marcacao =
+      '<svg viewBox="0 0 ' + L + " " + A + '" role="img" aria-label="Nível ao longo do tempo, de ' +
+      pontos[0].nivel + " a " + ultimo.nivel + '" font-family="Pixelify Sans, monospace">' +
+      grade +
+      '<path d="' + caminho + '" fill="none" stroke="#040924" stroke-width="5" stroke-linejoin="round"/>' +
+      '<path d="' + caminho + '" fill="none" stroke="#ffd75e" stroke-width="2" stroke-linejoin="round"/>' +
+      '<circle cx="' + X(ultimo.t).toFixed(1) + '" cy="' + Y(ultimo.nivel).toFixed(1) + '" r="4" fill="#ffd75e" stroke="#040924" stroke-width="2"/>' +
+      '<text x="' + me + '" y="' + (A - 6) + '" fill="#b8c6ff" font-size="11">' + dataBR(pontos[0].data) + "</text>" +
+      '<text x="' + (L - md) + '" y="' + (A - 6) + '" text-anchor="end" fill="#b8c6ff" font-size="11">' + dataBR(ultimo.data) + "</text>" +
+      '<line class="mira" x1="0" x2="0" y1="' + mt + '" y2="' + (A - mb) + '" stroke="#ffffff" stroke-opacity=".6" stroke-dasharray="3 3" visibility="hidden"/>' +
+      '<circle class="ponto" r="5" fill="#ffffff" stroke="#040924" stroke-width="2" visibility="hidden"/>' +
+      "</svg>";
+    var caixa = el("div", { class: "grafico" });
+    var svg = svgDe(marcacao);
+    var dica = el("div", { class: "dica", hidden: "" });
+    caixa.appendChild(svg);
+    caixa.appendChild(dica);
+    p.appendChild(caixa);
+    p.appendChild(el("p", { class: "detalhe", text:
+      "Do Lv " + pontos[0].nivel + " ao Lv " + ultimo.nivel + " entre " + dataBR(pontos[0].data) +
+      " e " + dataBR(ultimo.data) + "." }));
+
+    var mira = svg.querySelector(".mira"), ponto = svg.querySelector(".ponto");
+    function mostrar(ev) {
+      var r = svg.getBoundingClientRect();
+      var x = (ev.clientX - r.left) * L / r.width;
+      var perto = pontos[0], dist = Infinity;
+      pontos.forEach(function (pt) { var dd = Math.abs(X(pt.t) - x); if (dd < dist) { dist = dd; perto = pt; } });
+      var px = X(perto.t), py = Y(perto.nivel);
+      mira.setAttribute("x1", px); mira.setAttribute("x2", px); mira.setAttribute("visibility", "visible");
+      ponto.setAttribute("cx", px); ponto.setAttribute("cy", py); ponto.setAttribute("visibility", "visible");
+      dica.textContent = dataBR(perto.data) + " · Lv " + perto.nivel;
+      dica.hidden = false;
+      var esq = px * r.width / L;
+      dica.style.left = Math.max(48, Math.min(r.width - 48, esq)) + "px";
+    }
+    function esconder() {
+      mira.setAttribute("visibility", "hidden"); ponto.setAttribute("visibility", "hidden"); dica.hidden = true;
+    }
+    svg.addEventListener("pointermove", mostrar);
+    svg.addEventListener("pointerdown", mostrar);
+    svg.addEventListener("pointerleave", esconder);
+  }
+
+  function painelMusculos(d) {
+    var p = document.getElementById("p-musculos");
+    p.appendChild(el("h2", { text: "Músculos" }));
+    var mus = arr(d.mus);
+    if (!mus.length) {
+      p.appendChild(el("p", { class: "vazio", text: "Os músculos ganham nível com séries no RPE 7 a 9." }));
+      return;
+    }
+    var maior = mus.reduce(function (m, x) { return Math.max(m, x[1] || 0); }, 1);
+    var lista = el("ul", { class: "lista" });
+    mus.forEach(function (m) {
+      lista.appendChild(el("li", null, [
+        el("div", { class: "topo-item" }, [
+          el("span", { class: "nome", text: m[0] }),
+          el("span", { class: "ouro", text: "Lv " + m[1] })
+        ]),
+        medidor("", m[1] || 0, maior, "mus", "")
+      ]));
+    });
+    lista.querySelectorAll(".medidor").forEach(function (m) { m.style.gridTemplateColumns = "0 1fr 0"; m.style.gap = "0"; m.style.margin = "4px 0 0"; });
+    p.appendChild(lista);
+  }
+
+  // ---------------------------------------------------------------------
+  // Menu de comandos
+  // ---------------------------------------------------------------------
+  function montarMenu() {
+    var menu = document.getElementById("menu");
+    var botoes = ABAS.map(function (aba, i) {
+      var b = el("button", {
+        class: "comando", id: "t-" + aba[0], role: "tab", type: "button",
+        "aria-controls": "p-" + aba[0], "aria-selected": i === 0 ? "true" : "false",
+        tabindex: i === 0 ? "0" : "-1"
+      });
+      var mao = el("span", { class: "mao" });
+      mao.appendChild(svgDe(MAO));
+      b.appendChild(mao);
+      b.appendChild(document.createTextNode(aba[1]));
+      b.addEventListener("click", function () { selecionar(i, false); });
+      menu.appendChild(b);
+      return b;
+    });
+    menu.addEventListener("keydown", function (ev) {
+      var atual = botoes.findIndex(function (b) { return b.getAttribute("aria-selected") === "true"; });
+      var passo = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 }[ev.key];
+      if (passo == null) return;
+      ev.preventDefault();
+      selecionar((atual + passo + botoes.length) % botoes.length, true);
+    });
+    function selecionar(i, focar) {
+      botoes.forEach(function (b, j) {
+        var sel = i === j;
+        b.setAttribute("aria-selected", sel ? "true" : "false");
+        b.tabIndex = sel ? 0 : -1;
+        document.getElementById("p-" + ABAS[j][0]).hidden = !sel;
+      });
+      if (focar) botoes[i].focus();
+      var painel = document.getElementById("p-" + ABAS[i][0]);
+      animarMedidores(painel);
+      window.scrollTo(0, 0);
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (tg && tg.HapticFeedback) { try { tg.HapticFeedback.selectionChanged(); } catch (e) {} }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Inicio
+  // ---------------------------------------------------------------------
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    try { tg.ready(); tg.expand(); } catch (e) {}
+  }
+
+  var carga = carregarDados();
+  var d = carga.dados;
+  document.getElementById("aviso").hidden = !carga.demo;
+  document.getElementById("titulo").textContent = d.titulo || "";
+  document.getElementById("classe").textContent = d.classe || "";
+  var nivel = document.getElementById("nivel");
+  nivel.textContent = String(d.nivel);
+  nivel.classList.add("pop");
+  document.getElementById("ouro-topo").textContent = num(d.ouro);
+  document.getElementById("treinos-topo").textContent = num(d.treinos);
+  document.getElementById("recordes-topo").textContent = num(d.recordes);
+
+  [painelStatus, painelChefes, painelConquistas, painelMissoes, painelDiario, painelEvolucao, painelMusculos]
+    .forEach(function (f) {
+      try { f(d); } catch (e) { /* um painel com dado estranho nao derruba os outros */ }
+    });
+  montarMenu();
+  animarMedidores(document.getElementById("p-status"));
+})();
+</script>
+</body>
+</html>

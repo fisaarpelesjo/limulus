@@ -38,6 +38,7 @@ def main():
     original_ods_session = ods_ops.SESSION_FILE
     original_poller_session = telegram_poller.SESSION_FILE
     original_send = telegram_poller.send
+    original_telegram_call = telegram_poller.telegram_call
 
     sent_messages = []
 
@@ -52,6 +53,7 @@ def main():
             ods_ops.SESSION_FILE = test_session
             telegram_poller.SESSION_FILE = test_session
             telegram_poller.send = lambda text, **kwargs: sent_messages.append(text)
+            telegram_poller.telegram_call = lambda *args, **kwargs: (False, "teste sem rede")
 
             telegram_poller.handle_preview()
             assert test_db.exists(), "Preview should initialize the database for exercise lookup."
@@ -208,6 +210,7 @@ def main():
             ods_ops.SESSION_FILE = original_ods_session
             telegram_poller.SESSION_FILE = original_poller_session
             telegram_poller.send = original_send
+            telegram_poller.telegram_call = original_telegram_call
             gc.collect()
 
 

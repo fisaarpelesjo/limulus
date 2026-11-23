@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import sqlite3
 from collections import defaultdict
 from datetime import date, datetime
@@ -11,6 +12,8 @@ from pathlib import Path
 
 from limulus import db_ops
 from limulus import ods_ops
+
+LOGGER = logging.getLogger("limulus.dashboard")
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT_DIR / "temp" / "dashboard-treino.html"
@@ -969,6 +972,73 @@ def carregar_dados():
             peso_corporal["atual"],
             cintura["atual"],
         ),
+        "jogo": _carregar_jogo(),
+    }
+
+
+def _carregar_jogo():
+    """Le o estado do personagem; qualquer falha apenas omite a secao."""
+    try:
+        from limulus import jogo
+
+        return _resumir_jogo(jogo.estado_atual())
+    except Exception:
+        LOGGER.exception("Falha ao carregar a ficha do personagem; secao omitida.")
+        return None
+
+
+def _resumir_jogo(estado):
+    """Recorta o estado do jogo para um dicionario simples e serializavel."""
+    atributos = estado.get("atributos") or {}
+    return {
+        "nivel": int(estado["nivel"]),
+        "titulo": str(estado.get("titulo") or ""),
+        "classe": str(estado.get("classe") or ""),
+        "exp_total": int(estado.get("exp_total") or 0),
+        "exp_no_nivel": int(estado.get("exp_no_nivel") or 0),
+        "exp_do_nivel": int(estado.get("exp_do_nivel") or 0),
+        "atributos": {
+            chave: int(atributos.get(chave) or 0) for chave in ("FOR", "VIG", "DIS")
+        },
+        "ouro": int(estado.get("ouro") or 0),
+        "sequencia": int(estado.get("sequencia") or 0),
+        "melhor_sequencia": int(estado.get("melhor_sequencia") or 0),
+        "chefes": [
+            {
+                "nome": str(chefe.get("nome") or ""),
+                "rank": str(chefe.get("rank") or ""),
+                "proximo_rank": chefe.get("proximo_rank"),
+                "hp_pct": max(0, min(100, int(chefe.get("hp_pct") or 0))),
+                "e1rm": chefe.get("e1rm"),
+                "alvo_e1rm": chefe.get("alvo_e1rm"),
+            }
+            for chefe in estado.get("chefes") or []
+        ],
+        "conquistas": [
+            {
+                "nome": str(item.get("nome") or ""),
+                "descricao": str(item.get("descricao") or ""),
+                "data": item.get("data"),
+            }
+            for item in estado.get("conquistas") or []
+        ],
+        "missoes": [
+            {
+                "nome": str(item.get("nome") or ""),
+                "meta": int(item.get("meta") or 0),
+                "progresso": int(item.get("progresso") or 0),
+                "feita": bool(item.get("feita")),
+            }
+            for item in estado.get("missoes") or []
+        ],
+        "diario": [
+            {"data": str(item.get("data") or ""), "texto": str(item.get("texto") or "")}
+            for item in (estado.get("diario") or [])[-5:]
+        ],
+        "historico_nivel": [
+            {"data": str(item["data"]), "nivel": int(item["nivel"])}
+            for item in estado.get("historico_nivel") or []
+        ],
     }
 
 
@@ -2226,6 +2296,153 @@ def _render_relatorio_semanal(relatorio):
     """
 
 
+def _fmt_data_jogo(texto):
+    try:
+        return date.fromisoformat(str(texto)[:10]).strftime("%d/%m/%Y")
+    except ValueError:
+        return str(texto)
+
+
+def _render_barra_jogo(percentual, classe, rotulo):
+    percentual = max(0.0, min(100.0, float(percentual)))
+    return (
+        f'<div class="ficha-barra {classe}" role="meter" aria-valuemin="0" '
+        f'aria-valuemax="100" aria-valuenow="{percentual:.0f}" '
+        f'aria-label="{html.escape(rotulo, quote=True)}">'
+        f'<i style="width: {percentual:.1f}%"></i></div>'
+    )
+
+
+def _render_ficha_personagem(jogo):
+    """Secao da ficha do personagem; vazia se nao houver estado do jogo."""
+    if not jogo:
+        return ""
+    esc = html.escape
+    exp_do_nivel = jogo["exp_do_nivel"]
+    exp_pct = 100.0 * jogo["exp_no_nivel"] / exp_do_nivel if exp_do_nivel else 100.0
+    exp_texto = (
+        f"{_fmt_numero(jogo['exp_no_nivel'])} / {_fmt_numero(exp_do_nivel)} EXP"
+        if exp_do_nivel
+        else "Nivel maximo"
+    )
+    atributos = "".join(
+        '<div class="ficha-atributo">'
+        f'<span class="rotulo">{esc(sigla)}</span><strong>{valor}</strong>'
+        + _render_barra_jogo(valor * 100 / 99, "ficha-barra-atributo", f"{sigla} {valor} de 99")
+        + "</div>"
+        for sigla, valor in jogo["atributos"].items()
+    )
+
+    chefes = []
+    for chefe in jogo["chefes"]:
+        if chefe["proximo_rank"]:
+            alvo = (
+                f" | alvo 1RM {_fmt_decimal(chefe['alvo_e1rm'])} kg"
+                if chefe["alvo_e1rm"]
+                else ""
+            )
+            detalhe = f"HP {chefe['hp_pct']}% ate {esc(str(chefe['proximo_rank']))}{alvo}"
+        else:
+            detalhe = "Rank maximo"
+        barra = _render_barra_jogo(chefe["hp_pct"], "ficha-barra-hp", "HP de " + chefe["nome"])
+        chefes.append(
+            '<div class="ficha-chefe"><div class="ficha-linha">'
+            f'<span>{esc(chefe["nome"])}</span>'
+            f'<span class="ficha-rank">{esc(chefe["rank"])}</span></div>'
+            f"{barra}<small>{detalhe}</small></div>"
+        )
+    chefes_html = "".join(chefes) or '<p class="subtitulo">Sem chefes.</p>'
+
+    desbloqueadas = sum(1 for item in jogo["conquistas"] if item["data"])
+    conquistas = []
+    for item in jogo["conquistas"]:
+        estado = "desbloqueada" if item["data"] else "bloqueada"
+        legenda = _fmt_data_jogo(item["data"]) if item["data"] else item["descricao"]
+        conquistas.append(
+            f'<div class="ficha-conquista {estado}" title="{esc(item["descricao"], quote=True)}">'
+            f'<strong>{esc(item["nome"])}</strong><small>{esc(legenda)}</small></div>'
+        )
+    conquistas_html = "".join(conquistas)
+
+    missoes = []
+    for item in jogo["missoes"]:
+        marca = "[x]" if item["feita"] else "[ ]"
+        classe = ' class="feita"' if item["feita"] else ""
+        missoes.append(
+            f"<li{classe}><span>{marca} {esc(item['nome'])}</span>"
+            f"<span>{item['progresso']}/{item['meta']}</span></li>"
+        )
+    missoes_html = "".join(missoes) or "<li>Sem missoes nesta semana.</li>"
+
+    diario_html = "".join(
+        f'<li><span class="ficha-data">{esc(_fmt_data_jogo(item["data"]))}</span>'
+        f'<span>{esc(item["texto"])}</span></li>'
+        for item in reversed(jogo["diario"])
+    ) or "<li>Diario vazio.</li>"
+
+    grafico_nivel = (
+        '<div class="grafico-container ficha-grafico">'
+        '<canvas id="grafico-nivel" aria-label="Linha de evolucao do nivel do personagem" '
+        'role="img"></canvas></div>'
+        if jogo["historico_nivel"]
+        else '<p class="subtitulo">Sem treinos concluidos ainda.</p>'
+    )
+
+    return f"""
+    <cds-tile class="painel ficha-personagem">
+      <div class="linha-topo">
+        <h2>Ficha do personagem</h2>
+        <span>{_fmt_numero(jogo['exp_total'])} EXP acumulada</span>
+      </div>
+      <div class="ficha-topo">
+        <div class="ficha-identidade">
+          <span class="rotulo">Personagem</span>
+          <strong class="ficha-nivel">Nivel {jogo['nivel']}</strong>
+          <span class="subtitulo">{esc(jogo['titulo'])} | {esc(jogo['classe'])}</span>
+          {_render_barra_jogo(exp_pct, "ficha-barra-exp", "Progresso de EXP no nivel")}
+          <small>{exp_texto}</small>
+        </div>
+        <div class="ficha-atributos">{atributos}</div>
+        <div class="ficha-numeros">
+          <div><span class="rotulo">Ouro</span><strong>{_fmt_numero(jogo['ouro'])} G</strong></div>
+          <div><span class="rotulo">Sequencia atual</span><strong>{jogo['sequencia']} sem.</strong></div>
+          <div><span class="rotulo">Melhor sequencia</span><strong>{jogo['melhor_sequencia']} sem.</strong></div>
+        </div>
+      </div>
+      <div class="ficha-colunas">
+        <div>
+          <h3>Nivel ao longo do tempo</h3>
+          {grafico_nivel}
+        </div>
+        <div>
+          <h3>Chefes</h3>
+          {chefes_html}
+        </div>
+      </div>
+      <div class="ficha-colunas">
+        <div>
+          <h3>Missoes da semana</h3>
+          <ul class="ficha-lista ficha-missoes">{missoes_html}</ul>
+        </div>
+        <div>
+          <h3>Diario</h3>
+          <ul class="ficha-lista ficha-diario">{diario_html}</ul>
+        </div>
+      </div>
+      <h3>Conquistas ({desbloqueadas}/{len(jogo['conquistas'])})</h3>
+      <div class="ficha-conquistas">{conquistas_html}</div>
+    </cds-tile>
+"""
+
+
+def _render_ficha_personagem_segura(jogo):
+    try:
+        return _render_ficha_personagem(jogo)
+    except Exception:
+        LOGGER.exception("Falha ao renderizar a ficha do personagem; secao omitida.")
+        return ""
+
+
 def gerar_html(dados):
     resumo = dados["resumo"]
     sessoes = dados["volume_por_sessao"]
@@ -2454,6 +2671,7 @@ def gerar_html(dados):
     heatmap_sessoes = _render_heatmap_sessoes(dados["heatmap_sessoes"])
     relatorio_semanal = _render_relatorio_semanal(dados["relatorio_semanal"])
     treino_ativo = _render_treino_ativo(dados["treino_ativo"])
+    ficha_personagem = _render_ficha_personagem_segura(dados.get("jogo"))
 
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -2948,6 +3166,84 @@ def gerar_html(dados):
       .mapa-vistas {{ gap: 10px; }}
       .relatorio-semanal {{ grid-template-columns: 1fr; }}
     }}
+    .ficha-personagem {{
+      border: 1px solid var(--limulus-blue);
+      border-left-width: 4px;
+    }}
+    .ficha-topo {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 1.5rem;
+      align-items: start;
+    }}
+    .ficha-identidade small,
+    .ficha-chefe small {{
+      display: block;
+      color: var(--limulus-text-helper);
+      font-size: var(--tipo-xs);
+      margin-top: 0.25rem;
+    }}
+    .ficha-nivel {{ display: block; font-size: var(--tipo-2xl); font-weight: 400; line-height: 1.1; }}
+    .ficha-barra {{
+      height: 8px;
+      background: var(--limulus-layer-03);
+      margin-top: 0.5rem;
+      overflow: hidden;
+    }}
+    .ficha-barra i {{ display: block; height: 100%; background: var(--limulus-blue); }}
+    .ficha-barra-hp i {{ background: var(--limulus-error); }}
+    .ficha-barra-atributo {{ height: 4px; }}
+    .ficha-atributos {{ display: grid; gap: 0.75rem; }}
+    .ficha-atributo {{
+      display: grid;
+      grid-template-columns: 40px 32px minmax(0, 1fr);
+      gap: 0.5rem;
+      align-items: center;
+    }}
+    .ficha-atributo .rotulo,
+    .ficha-atributo .ficha-barra {{ margin: 0; }}
+    .ficha-numeros {{ display: grid; gap: 0.75rem; }}
+    .ficha-numeros strong {{ display: block; font-size: var(--tipo-lg); font-weight: 400; }}
+    .ficha-numeros .rotulo {{ margin-bottom: 0.1rem; }}
+    .ficha-colunas {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.5rem;
+    }}
+    .ficha-grafico {{ height: 220px; min-height: 220px; max-height: 220px; }}
+    .ficha-chefe {{ padding: 0.5rem 0; border-bottom: 1px solid var(--limulus-border); }}
+    .ficha-linha {{ display: flex; justify-content: space-between; gap: 1rem; }}
+    .ficha-rank {{ color: var(--limulus-blue); font-size: var(--tipo-xs); font-weight: 600; }}
+    .ficha-lista {{ list-style: none; margin: 0; padding: 0; }}
+    .ficha-lista li {{
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--limulus-border);
+      color: var(--limulus-text-secondary);
+    }}
+    .ficha-missoes li.feita {{ color: var(--limulus-success); }}
+    .ficha-diario li {{ justify-content: flex-start; }}
+    .ficha-data {{ color: var(--limulus-text-helper); font-size: var(--tipo-xs); white-space: nowrap; padding-top: 0.1rem; }}
+    .ficha-conquistas {{
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1px;
+    }}
+    .ficha-conquista {{
+      background: var(--limulus-layer-02);
+      border: 1px solid var(--limulus-border-strong);
+      padding: 0.6rem 0.75rem;
+    }}
+    .ficha-conquista strong {{ display: block; font-weight: 600; font-size: var(--tipo-xs); }}
+    .ficha-conquista small {{ color: var(--limulus-text-helper); font-size: var(--tipo-xs); }}
+    .ficha-conquista.desbloqueada {{ border-color: var(--limulus-blue); }}
+    .ficha-conquista.bloqueada {{ opacity: 0.45; }}
+    @media (max-width: 860px) {{
+      .ficha-topo,
+      .ficha-colunas {{ grid-template-columns: 1fr; }}
+    }}
   </style>
 </head>
 <body class="cds--g100">
@@ -3022,7 +3318,7 @@ def gerar_html(dados):
         {grafico_relacao}
       </cds-tile>
     </section>
-
+{ficha_personagem}
     <cds-tile class="painel">
       <div class="linha-topo">
         <h2>Volume por sessao</h2>
@@ -3631,7 +3927,51 @@ def gerar_html(dados):
       }});
     }}
 
+    function criarGraficoNivel() {{
+      const canvas = document.getElementById("grafico-nivel");
+      const historico = dados.jogo ? dados.jogo.historico_nivel : [];
+      if (!canvas || !historico.length) return;
+      new Chart(canvas, {{
+        type: "line",
+        data: {{
+          labels: historico.map((ponto) => ponto.data.slice(5)),
+          datasets: [{{
+            label: "Nivel",
+            data: historico.map((ponto) => ponto.nivel),
+            borderColor: "#78a9ff",
+            backgroundColor: "rgba(120, 169, 255, 0.14)",
+            pointRadius: historico.length > 40 ? 0 : 2,
+            borderWidth: 2,
+            fill: true,
+            stepped: true
+          }}]
+        }},
+        options: {{
+          ...baseChartOptions,
+          plugins: {{
+            ...baseChartOptions.plugins,
+            tooltip: {{
+              ...baseChartOptions.plugins.tooltip,
+              callbacks: {{
+                title: (ctx) => historico[ctx[0].dataIndex].data,
+                label: (ctx) => `Nivel ${{ctx.parsed.y}}`
+              }}
+            }}
+          }},
+          scales: {{
+            ...baseChartOptions.scales,
+            y: {{
+              ...baseChartOptions.scales.y,
+              beginAtZero: true,
+              ticks: {{ color: "#c6c6c6", precision: 0 }}
+            }}
+          }}
+        }}
+      }});
+    }}
+
     criarGraficoVolume();
+    criarGraficoNivel();
     criarMinigraficos();
     criarGraficoCargaRpe();
     criarGraficoExercicios();

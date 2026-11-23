@@ -13,7 +13,7 @@ dados de dieta.
 
 ## Versao E Migracoes
 
-O esquema atual usa `SCHEMA_VERSION = 15`. A tabela `schema_migrations` registra
+O esquema atual usa `SCHEMA_VERSION = 16`. A tabela `schema_migrations` registra
 uma linha por versao aplicada, com data e hora.
 
 `db_ops.init_db()`:
@@ -51,6 +51,11 @@ migrado apos backup; os testes usam bancos temporarios.
 A migracao 14 renomeia o plano antigo `A` (11 exercicios, foco em forca) para
 `Forca`, que fica inativo, e cria os planos `A` e `B` de hipertrofia e
 emagrecimento, deixando `A` ativo. Nao cria tabelas nem colunas.
+
+A migracao 16 cria as tabelas do jogo estilo JRPG (`jogo_estado`,
+`jogo_compras` e `jogo_pausas`). EXP, nivel, conquistas e chefes continuam
+derivados do historico; essas tabelas guardam so o que nao da para derivar.
+A exportacao JSON inclui as tres.
 
 O launcher local usa a API de backup do SQLite, sem copiar o arquivo enquanto
 uma transacao pode estar incompleta:
@@ -258,6 +263,21 @@ recente.
 `updated_at`. O dashboard combina a altura com o peso mais recente para
 calcular o IMC e com a cintura mais recente para calcular a relacao
 cintura/altura. Esses valores sao indicadores derivados e nao diagnosticos.
+
+### Jogo
+
+O jogo (`limulus/jogo.py`) calcula EXP, nivel, ouro, sequencia, missoes,
+conquistas, chefes e atributos a partir de `training_sessions` e
+`training_logs`; mudar uma regra recalcula o historico sem migracao. Desde o
+schema 16, so o que nao da para derivar fica em tabelas proprias:
+
+- `jogo_estado`: chave/valor simples (`chave` TEXT PRIMARY KEY, `valor`
+  TEXT), por exemplo `hud_mensagem`, o id da mensagem fixada do HUD;
+- `jogo_compras`: compras na loja (`id`, `item`, `ouro` maior ou igual a
+  zero, `criado_em`); o ouro disponivel e o ganho menos a soma das compras;
+- `jogo_pausas`: pausas declaradas por `/pausa` (`id`, `inicio`, `fim`
+  opcional, `motivo` opcional); semanas em pausa nao gastam coringa nem
+  quebram a sequencia.
 
 ## Catalogo Atual
 

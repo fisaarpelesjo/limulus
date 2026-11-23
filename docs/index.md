@@ -15,7 +15,7 @@ na documentacao do software.
 - [Banco de dados](banco-de-dados.md): SQLite, tabelas, relacoes, fonte da verdade e
   comandos seguros de inspecao, incluindo o dashboard local de volume.
 - [Bot Telegram](bot-telegram.md): comandos, parsing de entrada, fluxo de
-  mensagens, polling e falhas comuns.
+  mensagens, polling, jogo estilo JRPG, Mini App e falhas comuns.
 - [Testes](testes.md): smoke test, teste ponta a ponta, o que cada um garante e
   como adicionar novos testes.
 - [Portabilidade](portabilidade.md): Windows, Linux, macOS, WSL, maquinas fracas,
@@ -60,6 +60,9 @@ python tests/botoes_treino_test.py
 python tests/dashboard_test.py
 python tests/backup_export_test.py
 python tests/telegram_falhas_test.py
+python tests/jogo_test.py
+python tests/jogo_visual_test.py
+python tests/app_test.py
 python start_bot.py
 ```
 
@@ -72,5 +75,8 @@ python3 tests/e2e_training_flow_test.py
 python3 tests/dashboard_test.py
 python3 tests/backup_export_test.py
 python3 tests/telegram_falhas_test.py
+python3 tests/jogo_test.py
+python3 tests/jogo_visual_test.py
+python3 tests/app_test.py
 python3 start_bot.py
 ```

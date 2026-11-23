@@ -8,6 +8,7 @@ Runtime:
 Python 3.10+
 SQLite
 requests
+pillow (imagens do jogo; sem ele o jogo segue so em texto)
 ffmpeg (para extracao de frames de video)
 internet de saida
 ```

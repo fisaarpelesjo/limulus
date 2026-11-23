@@ -23,7 +23,10 @@ Antes de qualquer operacao remota:
    que alterem esquema, persistencia ou migracoes.
 5. Atualizar codigo com fast-forward e preservar `.env`, `.venv/`, `logs/`,
    `session.json` e `data/limulus.db`.
-6. Reiniciar apenas o servico do Limulus e verificar status e logs operacionais.
+6. Se o deploy alterar `requirements.txt` (por exemplo, a entrada de `pillow`
+   para as imagens do jogo), rodar `pip install -r requirements.txt` com o
+   Python do `.venv/` do Limulus antes de reiniciar.
+7. Reiniciar apenas o servico do Limulus e verificar status e logs operacionais.
 
 Uma forma segura de montar o comando de acesso a partir dos campos e:
 

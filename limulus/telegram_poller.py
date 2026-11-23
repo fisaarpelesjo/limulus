@@ -1,4 +1,5 @@
 import requests
+import base64
 import json
 import logging
 import time
@@ -342,6 +343,30 @@ def telegram_action(method, payload):
         return False
 
 
+def telegram_call(method, payload, files=None):
+    """Chama a API e devolve (ok, resultado ou descricao do erro).
+
+    Todas as chamadas do jogo (fotos, audio, edicoes, mensagem fixada) passam
+    por aqui; os testes substituem esta funcao para nunca falar com a rede.
+    """
+    try:
+        if files:
+            data = {
+                chave: json.dumps(valor) if isinstance(valor, (dict, list)) else valor
+                for chave, valor in payload.items()
+            }
+            response = HTTP.post(f"{API}/{method}", data=data, files=files, timeout=30)
+        else:
+            response = HTTP.post(f"{API}/{method}", json=payload, timeout=10)
+        corpo = response.json()
+        if corpo.get("ok"):
+            return True, corpo.get("result")
+        return False, str(corpo.get("description", response.status_code))
+    except (requests.RequestException, ValueError):
+        LOGGER.warning("Falha na chamada Telegram metodo=%s", method)
+        return False, "falha de rede"
+
+
 def send_current_exercise(ex):
     markup = None
     target = ex.get("target_weight")
@@ -372,6 +397,155 @@ def send_completion(session):
     send_victory(session['session_id'])
 
 
+# --------------------------------------------------------------------------
+# Jogo estilo JRPG: tela de vitoria, imagens, HUD fixado, menu e Mini App
+# --------------------------------------------------------------------------
+
+# Efeito de mensagem do Telegram (confete) reservado a level up e semana
+# completa; se o Telegram recusar o efeito, a mensagem sai sem ele.
+EFEITO_FESTA = "5046509860389126442"
+SOM_LEVEL_UP = BASE_DIR / "limulus" / "assets" / "jogo" / "level_up.ogg"
+APP_URL = "https://fisaarpelesjo.github.io/limulus/app/"
+PAUSA_ANIMACAO = 0.35
+
+MENU_JOGO = {
+    "inline_keyboard": [
+        [
+            {"text": "📜 Status", "callback_data": "menu:perfil"},
+            {"text": "👹 Chefes", "callback_data": "menu:chefes"},
+            {"text": "🗺 Semana", "callback_data": "menu:semana"},
+        ],
+        [
+            {"text": "📋 Missões", "callback_data": "menu:missoes"},
+            {"text": "🏆 Conquistas", "callback_data": "menu:conquistas"},
+            {"text": "📖 Diário", "callback_data": "menu:diario"},
+        ],
+        [
+            {"text": "🏪 Loja", "callback_data": "menu:loja"},
+            {"text": "🎮 Abrir app", "callback_data": "menu:app"},
+        ],
+    ]
+}
+
+
+def _visual():
+    """Carrega o modulo de imagens so quando preciso; sem Pillow, segue em texto."""
+    try:
+        from . import jogo_visual
+        return jogo_visual
+    except Exception as exc:
+        LOGGER.warning("Imagens do jogo indisponiveis tipo=%s", type(exc).__name__)
+        return None
+
+
+def send_message(text, reply_markup=None, effect=None, silent=False):
+    """Envia texto e devolve o objeto da mensagem (ou None)."""
+    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    if silent:
+        payload["disable_notification"] = True
+    if effect:
+        ok, result = telegram_call("sendMessage", dict(payload, message_effect_id=effect))
+        if ok:
+            return result
+    ok, result = telegram_call("sendMessage", payload)
+    return result if ok else None
+
+
+def send_image(render, *args, caption=None):
+    """Gera a imagem com a funcao `render` do modulo visual e envia como foto."""
+    visual = _visual()
+    if visual is None:
+        return False
+    try:
+        png = getattr(visual, render)(*args)
+    except Exception as exc:
+        LOGGER.error("Falha ao gerar imagem %s tipo=%s", render, type(exc).__name__)
+        return False
+    payload = {"chat_id": CHAT_ID}
+    if caption:
+        payload.update(caption=caption, parse_mode="HTML")
+    ok, _ = telegram_call("sendPhoto", payload, files={"photo": (f"{render}.png", png, "image/png")})
+    return ok
+
+
+def send_level_up_sound():
+    if not SOM_LEVEL_UP.exists():
+        return False
+    ok, _ = telegram_call(
+        "sendVoice",
+        {"chat_id": CHAT_ID, "disable_notification": True},
+        files={"voice": ("level_up.ogg", SOM_LEVEL_UP.read_bytes(), "audio/ogg")},
+    )
+    return ok
+
+
+def atualizar_hud(estado=None):
+    """Mantem uma mensagem fixada no topo do chat com nivel, semana e ouro."""
+    try:
+        estado = estado or jogo.estado_atual()
+        texto = jogo.formatar_hud(estado)
+        mensagem_id = jogo.ler_estado("hud_mensagem")
+        if mensagem_id:
+            ok, erro = telegram_call(
+                "editMessageText",
+                {"chat_id": CHAT_ID, "message_id": int(mensagem_id), "text": texto, "parse_mode": "HTML"},
+            )
+            if ok or "not modified" in str(erro):
+                return True
+        mensagem = send_message(texto, silent=True)
+        if not mensagem:
+            return False
+        telegram_call(
+            "pinChatMessage",
+            {"chat_id": CHAT_ID, "message_id": mensagem["message_id"], "disable_notification": True},
+        )
+        jogo.gravar_estado("hud_mensagem", mensagem["message_id"])
+        return True
+    except Exception as exc:
+        LOGGER.error("Falha ao atualizar HUD tipo=%s", type(exc).__name__)
+        return False
+
+
+def _quadro_vitoria(detalhe, nivel, pct, level_up=False):
+    barra = jogo._barra(pct, 100, 10)
+    linhas = ["⚔ <b>VITÓRIA!</b>", f"EXP <b>+{detalhe['total']}</b>", f"Lv {nivel} {barra} {pct}%"]
+    if level_up:
+        linhas.append("✨ <b>LEVEL UP!</b>")
+    return "\n".join(linhas)
+
+
+def _animar_vitoria(resultado, texto_final):
+    """Barra de EXP enchendo em poucas edicoes; sem id de mensagem, envia so o texto."""
+    antes, depois, detalhe = resultado["antes"], resultado["depois"], resultado["detalhe"]
+    festa = jogo.subiu_de_nivel(resultado) or detalhe["semana_completa"]
+    pct_antes = jogo._pct(antes)
+    mensagem = send_message(
+        _quadro_vitoria(detalhe, antes["nivel"], pct_antes),
+        effect=EFEITO_FESTA if festa else None,
+    )
+    if not mensagem:
+        send(texto_final)
+        return
+    quadros = []
+    if jogo.subiu_de_nivel(resultado):
+        quadros.append(_quadro_vitoria(detalhe, antes["nivel"], (pct_antes + 100) // 2))
+        quadros.append(_quadro_vitoria(detalhe, antes["nivel"], 100, level_up=True))
+        quadros.append(_quadro_vitoria(detalhe, depois["nivel"], jogo._pct(depois), level_up=True))
+    else:
+        pct_depois = jogo._pct(depois)
+        quadros.append(_quadro_vitoria(detalhe, depois["nivel"], (pct_antes + pct_depois) // 2))
+        quadros.append(_quadro_vitoria(detalhe, depois["nivel"], pct_depois))
+    quadros.append(texto_final)
+    for quadro in quadros:
+        time.sleep(PAUSA_ANIMACAO)
+        telegram_call(
+            "editMessageText",
+            {"chat_id": CHAT_ID, "message_id": mensagem["message_id"], "text": quadro, "parse_mode": "HTML"},
+        )
+
+
 def send_victory(session_id):
     """Envia a tela de vitoria do jogo; falha aqui nunca afeta o treino."""
     try:
@@ -379,17 +553,122 @@ def send_victory(session_id):
     except Exception as exc:
         LOGGER.error("Falha ao calcular EXP session_id=%s tipo=%s", session_id, type(exc).__name__)
         return
-    if resultado is not None:
-        send(jogo.formatar_vitoria(resultado))
+    if resultado is None:
+        return
+    try:
+        _animar_vitoria(resultado, jogo.formatar_vitoria(resultado))
+        send_image("render_vitoria", resultado)
+        if jogo.subiu_de_nivel(resultado):
+            send_level_up_sound()
+        atualizar_hud(resultado["depois"])
+    except Exception as exc:
+        LOGGER.error("Falha na tela de vitoria session_id=%s tipo=%s", session_id, type(exc).__name__)
+
+
+def _link_app(estado):
+    dados = base64.urlsafe_b64encode(jogo.exportar_json_app(estado).encode("utf-8"))
+    return APP_URL + "#d=" + dados.decode("ascii").rstrip("=")
 
 
 def handle_profile():
-    send(jogo.formatar_perfil(jogo.estado_atual()))
+    estado = jogo.estado_atual()
+    send_image("render_ficha", estado)
+    send(jogo.formatar_perfil(estado), reply_markup=MENU_JOGO)
+    atualizar_hud(estado)
+
+
+def handle_bosses():
+    estado = jogo.estado_atual()
+    send_image("render_chefes", estado)
+    send(jogo.formatar_chefes(estado))
+
+
+def handle_week():
+    estado = jogo.estado_atual()
+    send_image("render_semana", estado)
+    send(
+        "🗺 <b>MAPA DA SEMANA</b>\n\n"
+        f"{jogo.formatar_semana(estado)}\n"
+        f"Treinos: <b>{estado['treinos_semana_atual']}/{jogo.TREINOS_POR_SEMANA}</b>"
+        f" · Sequência: <b>{estado['sequencia']}</b> sem.\n\n"
+        + jogo.formatar_missoes(estado)
+    )
+
+
+def handle_app():
+    estado = jogo.estado_atual()
+    send(
+        "🎮 <b>Ficha completa no app</b>\nToque no botão para abrir dentro do Telegram.",
+        reply_markup={"inline_keyboard": [[{"text": "🎮 Abrir ficha", "web_app": {"url": _link_app(estado)}}]]},
+    )
+
+
+def handle_shop(text):
+    partes = text.strip().split(maxsplit=1)
+    if len(partes) == 2:
+        ok, mensagem = jogo.comprar(partes[1].strip().lower())
+        send(("🪙 " if ok else "⚠ ") + mensagem)
+        if ok:
+            atualizar_hud()
+        return
+    send(jogo.formatar_loja(jogo.estado_atual()))
+
+
+def handle_pause(text):
+    partes = text.strip().split(maxsplit=1)
+    argumento = partes[1].strip().lower() if len(partes) == 2 else ""
+    if argumento == "fim":
+        if jogo.encerrar_pausa():
+            send("▶ Pausa encerrada. Bem-vindo de volta à aventura!")
+            atualizar_hud()
+        else:
+            send("Nenhuma pausa ativa.")
+        return
+    if not argumento:
+        send(
+            "⏸ <b>Pausa</b>\nUse <code>/pausa 7</code> para pausar 7 dias "
+            f"(até {jogo.PAUSA_MAXIMA_DIAS}) por lesão, doença ou viagem, e "
+            "<code>/pausa fim</code> para voltar. Semanas em pausa não gastam "
+            "coringa nem quebram a sequência."
+        )
+        return
+    try:
+        dias = int(argumento)
+    except ValueError:
+        send("Use <code>/pausa 7</code> ou <code>/pausa fim</code>.")
+        return
+    fim = jogo.iniciar_pausa(dias)
+    send(f"⏸ Pausa registrada até <b>{fim:%d/%m/%Y}</b>. A sequência fica protegida.")
+    atualizar_hud()
+
+
+def handle_menu():
+    send("📜 <b>MENU DO HERÓI</b>\nEscolha uma opção:", reply_markup=MENU_JOGO)
+
+
+def handle_menu_callback(query, opcao):
+    telegram_action("answerCallbackQuery", {"callback_query_id": query["id"]})
+    acoes = {
+        "perfil": handle_profile,
+        "chefes": handle_bosses,
+        "semana": handle_week,
+        "missoes": lambda: send(jogo.formatar_missoes(jogo.estado_atual())),
+        "conquistas": lambda: send(jogo.formatar_conquistas(jogo.estado_atual())),
+        "diario": lambda: send(jogo.formatar_diario(jogo.estado_atual())),
+        "loja": lambda: send(jogo.formatar_loja(jogo.estado_atual())),
+        "app": handle_app,
+    }
+    acao = acoes.get(opcao)
+    if acao:
+        acao()
 
 
 def handle_rpe_callback(query):
     message = query.get('message', {})
     if str(message.get('chat', {}).get('id', '')) != CHAT_ID or str(query.get('from', {}).get('id', '')) != CHAT_ID:
+        return
+    if query.get('data', '').startswith('menu:'):
+        handle_menu_callback(query, query['data'].split(':', 1)[1])
         return
     parts = query.get('data', '').split(':')
     if len(parts) != 3 or parts[0] != 'rpe' or parts[2] not in {'7', '8', '9', '10'}:
@@ -844,8 +1123,18 @@ def main():
                         "/cintura — mostra a cintura atual e o historico\n"
                         "/status — exercicio atual e progresso\n"
                         "/desfazer — apaga o ultimo registro\n"
-                        "/perfil — nivel, EXP e sequencia semanal\n"
                         "/ajuda — esta mensagem\n\n"
+                        "<b>Jogo</b>\n"
+                        "/menu — menu do herói em botões\n"
+                        "/perfil — ficha: nivel, classe, atributos e ouro\n"
+                        "/chefes — chefes de cada movimento e o HP restante\n"
+                        "/semana — mapa da semana e missões\n"
+                        "/missoes — missões da semana\n"
+                        "/conquistas — conquistas desbloqueadas\n"
+                        "/diario — diário de aventura\n"
+                        "/loja — loja; <code>/loja coringa</code> compra\n"
+                        "/pausa N — pausa de N dias; <code>/pausa fim</code> volta\n"
+                        "/app — abre a ficha completa no app\n\n"
                         "<b>Registrar treino:</b> toque no RPE abaixo do exercício.\n"
                         "O botão usa a carga total indicada.\n\n"
                         "<b>Registro manual, se necessário:</b>\n"
@@ -856,12 +1145,26 @@ def main():
                         send("Toque abaixo para iniciar.", reply_markup=KEYBOARD_START)
                     continue
 
-                if lower == "/perfil":
+                comandos_jogo = {
+                    "/perfil": handle_profile,
+                    "/chefes": handle_bosses,
+                    "/semana": handle_week,
+                    "/menu": handle_menu,
+                    "/app": handle_app,
+                    "/missoes": lambda: send(jogo.formatar_missoes(jogo.estado_atual())),
+                    "/conquistas": lambda: send(jogo.formatar_conquistas(jogo.estado_atual())),
+                    "/diario": lambda: send(jogo.formatar_diario(jogo.estado_atual())),
+                }
+                acao_jogo = comandos_jogo.get(lower)
+                if acao_jogo is None and command in {"/loja", "/pausa"}:
+                    acao_jogo = (handle_shop if command == "/loja" else handle_pause)
+                    acao_jogo = (lambda f=acao_jogo: f(text))
+                if acao_jogo is not None:
                     try:
-                        handle_profile()
+                        acao_jogo()
                     except Exception as exc:
-                        LOGGER.error("Falha ao montar perfil tipo=%s", type(exc).__name__)
-                        send("Não foi possível montar o perfil. Consulte o terminal.")
+                        LOGGER.error("Falha no comando do jogo comando=%s tipo=%s", command, type(exc).__name__)
+                        send("Não foi possível concluir o comando do jogo. Consulte o terminal.")
                     continue
 
                 if lower == "/exercicios":

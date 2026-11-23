@@ -36,7 +36,9 @@ No schema atual, `training_sessions` usa `id`, `date` e `training_type`; nao
 assumir coluna `plan_name`. Desde o schema 13, `started_at` e `completed_at`
 existem e podem ser nulos em sessoes historicas. Desde o schema 15,
 os planos sao `A` a `E` (segunda a sexta, rotacao automatica) e `Forca`
-(antigo `A` do schema 13, inativo).
+(antigo `A` do schema 13, inativo). Desde o schema 16, o jogo guarda o que
+nao da para derivar do historico em `jogo_estado`, `jogo_compras` e
+`jogo_pausas`.
 `training_logs.weight` guarda a carga da serie de topo. `training_logs`
 usa `exercise_name` para o nome do exercicio, nao `exercise`, e nao possui
 `logged_at`; usar `session_id`, `sort_order` e `id` para ordenar logs.
@@ -126,6 +128,8 @@ invalido encerra o polling com erro claro. O `getUpdates` usa long polling
 passam pela sessao HTTP `telegram_poller.HTTP` (`requests.Session`), que
 reaproveita a conexao; por isso o clique no RPE e processado na hora. Testes
 que simulam a rede devem substituir `telegram_poller.HTTP.get/post`.
+As chamadas de rede do jogo passam por `telegram_poller.telegram_call`;
+testes do jogo devem substituir essa funcao.
 
 Comandos principais:
 
@@ -146,6 +150,15 @@ Comandos principais:
 - `/status`
 - `/desfazer`
 - `/perfil`
+- `/menu`
+- `/chefes`
+- `/semana`
+- `/missoes`
+- `/conquistas`
+- `/diario`
+- `/loja` e `/loja coringa`
+- `/pausa N` e `/pausa fim`
+- `/app`
 - `/ajuda`
 - `80` ou `80 8` para registrar carga e RPE opcional
 
@@ -212,20 +225,90 @@ aderencia do RPE, de `limulus/jogo.py`); conclusao "🏁 TREINO CONCLUÍDO" com
 
 ### `limulus/jogo.py`
 
-Camada de jogo no estilo JRPG (fase 1). Tudo e calculado a partir das
-sessoes concluidas no SQLite, sem tabela propria: mudar uma regra recalcula
-o historico inteiro. Sessao concluida vale 50 EXP; cada exercicio vale
-10 EXP vezes a aderencia ao RPE (8 ou 9 = 1,0; 7 ou menos = 0,5; 10 = 0,3;
-sem RPE = 0,5); recorde de carga com RPE ate 9 vale 20 EXP, no maximo um por
-exercicio por semana; semana cumprida (5 treinos de segunda a domingo) vale
-100 EXP. Nivel: `exp_para_nivel(N) = round(100 * (N - 1) ** 1.8)`, com
-titulos por faixa (Aprendiz, Escudeiro, Soldado, Cavaleiro, Paladino,
-Campeao, Heroi, Lenda). Sequencia = semanas seguidas cumpridas; semana
-incompleta gasta um coringa (2 por mes, pelo mes da segunda-feira) e mantem
-a sequencia sem somar; sem coringa, zera. Ao concluir o treino o bot envia a
-tela de vitoria (`send_victory`) depois do resumo; `/perfil` mostra a ficha.
-Falha no calculo do jogo so gera log e nunca interrompe o treino. Teste:
-`python tests/jogo_test.py`. Fases seguintes no roadmap.
+Camada de jogo no estilo JRPG (fases 1 a 3 entregues). EXP, nivel, titulo,
+classe, atributos, chefes, conquistas, missoes, ouro, sequencia e diario sao
+calculados a partir das sessoes concluidas no SQLite (`calcular()`): mudar uma
+regra recalcula o historico inteiro sem migracao. So o que nao da para derivar
+fica nas tabelas do schema 16: `jogo_compras` (loja), `jogo_pausas` (pausas
+declaradas) e `jogo_estado` (chave/valor, por exemplo `hud_mensagem`).
+
+- EXP: sessao concluida 50; cada exercicio 10 vezes a aderencia ao RPE (8 ou
+  9 = 1,0; 7 ou menos = 0,5; 10 = 0,3; sem RPE = 0,5); recorde de carga com
+  RPE ate 9 vale 20, no maximo um por exercicio por semana; semana cumprida
+  (5 treinos de segunda a domingo) vale 100; missao semanal vale 50.
+- Nivel: `exp_para_nivel(N) = round(100 * (N - 1) ** 1.8)`, maximo 99, com
+  titulos por faixa (Aprendiz, Escudeiro, Soldado, Cavaleiro, Paladino,
+  Campeao, Heroi, Lenda).
+- Ouro: 10 por sessao, 5 por recorde, 25 por semana cumprida e 20 por missao.
+  `LOJA` vende o coringa extra por 150 de ouro (`comprar()`, grava em
+  `jogo_compras`).
+- Sequencia: semanas seguidas cumpridas; semana incompleta gasta um coringa
+  (2 por mes, pelo mes da segunda-feira, depois os comprados) e mantem a
+  sequencia sem somar; sem coringa, zera. Semana com pausa declarada
+  (`/pausa N`, ate `PAUSA_MAXIMA_DIAS` = 90) e neutra.
+- Missoes: 3 por semana em rodizio fixo pela data (`MISSOES`); premiam
+  qualidade (RPE registrado, sessao inteira no RPE 8-9, recorde com RPE ate 9,
+  constancia), nunca "fazer mais".
+- Conquistas: lista fixa em `CONQUISTAS`, cada uma com a data da sessao que a
+  desbloqueou.
+- Chefes (`PADROES`): um por padrao de movimento (Empurrar, Agachar, Quadril,
+  Puxar, Ombro), com ranks Ferro, Bronze, Prata, Ouro, Platina e Diamante pela
+  razao 1RM estimado (Epley) / peso corporal. Os limites sao aproximacoes de
+  padroes publicos de forca para homens (strengthlevel.com, Symmetric
+  Strength), servem ao jogo e nao como avaliacao. HP = distancia ate o
+  proximo rank.
+- Atributos de 1 a 99: FOR (forca relativa nos chefes), VIG (series efetivas
+  por musculo, RPE 7 a 9) e DIS (presenca e RPE 8-9 nas ultimas 8 semanas).
+  Classe pelo atributo dominante (FOR Guerreiro, VIG Barbaro, DIS Monge), com
+  nome que evolui nos niveis 10 e 30.
+- Diario: uma linha por sessao (ultimas 30 no estado).
+- Textos HTML do Telegram: `formatar_vitoria`, `formatar_perfil`,
+  `formatar_chefes`, `formatar_semana`, `formatar_missoes`,
+  `formatar_conquistas`, `formatar_diario`, `formatar_loja` e `formatar_hud`
+  (mensagem fixada no topo do chat).
+- `exportar_para_app()` / `exportar_json_app()` geram o JSON compacto do Mini
+  App; o estado de cada dia da semana vira um codigo de `CODIGOS_DIA`
+  (`f` feito, `h` hoje, `p` pendente, `x` perdido, `d` descanso, `z` pausa).
+
+Falha no calculo do jogo so gera log e nunca interrompe o treino. Testes:
+`python tests/jogo_test.py`, `python tests/jogo_visual_test.py` e
+`python tests/app_test.py`.
+
+### `limulus/jogo_visual.py` e `limulus/jogo_sprites.py`
+
+Telas do jogo em PNG com Pillow, no estilo de janela de menu JRPG azul
+classica: `render_ficha`, `render_vitoria`, `render_chefes` e
+`render_semana`, desenhadas em 320 px de largura e ampliadas por vizinho mais
+proximo. `jogo_sprites.py` guarda a pixel art original (herois por classe e
+estagio, cinco chefes, icones) e uma fonte bitmap propria, porque a fonte
+`load_default` do Pillow nao tem os acentos do portugues; os acentos sao
+compostos pela decomposicao NFD. `pillow` esta em `requirements.txt`; sem ele
+o bot segue so em texto. `LIMULUS_AMOSTRAS=<pasta> python
+tests/jogo_visual_test.py` grava PNGs de amostra para conferir o visual.
+
+### Jogo no Telegram e Mini App
+
+- Ao concluir o treino, `send_victory` envia a tela de vitoria depois do
+  resumo: a barra de EXP enche por edicoes da mesma mensagem
+  (`PAUSA_ANIMACAO` = 0,35 s), com efeito de confete `EFEITO_FESTA` em level
+  up ou semana completa (sem o efeito se o Telegram recusar); depois envia a
+  imagem `render_vitoria`, o som `limulus/assets/jogo/level_up.ogg` como voz
+  no level up (fanfarra chiptune original de 1,4 s, gerada para o projeto) e
+  atualiza o HUD fixado (`atualizar_hud`, id em `jogo_estado.hud_mensagem`).
+- Comandos do jogo: `/menu` (menu inline `MENU_JOGO`, callbacks `menu:*`),
+  `/perfil`, `/chefes`, `/semana`, `/missoes`, `/conquistas`, `/diario`,
+  `/loja` e `/loja coringa`, `/pausa N` e `/pausa fim`, `/app`.
+- Todas as chamadas de rede do jogo (texto com efeito, fotos, voz, edicoes,
+  fixar mensagem) passam por `telegram_poller.telegram_call(method, payload,
+  files=None)`, que devolve `(ok, resultado)`. Testes devem substituir
+  `telegram_call` para nunca falar com a rede.
+- Mini App: `/app` e o botao "🎮 Abrir app" abrem `APP_URL`
+  (`https://fisaarpelesjo.github.io/limulus/app/`) por um botao `web_app`.
+  A pagina e `docs/app/index.html`, publicada pelo GitHub Pages a partir de
+  `docs/` (com `docs/.nojekyll`). O estado vai so no fragmento
+  `#d=<base64url do JSON>`, que nunca chega ao servidor; a pagina nao faz
+  fetch, nao guarda dados e mostra uma demonstracao sem fragmento valido.
+- O dashboard local tem a secao "Ficha do personagem" com o mesmo estado.
 
 ### `limulus/ods_ops.py`
 
@@ -379,7 +462,7 @@ Regras importantes:
 Modulo SQLite para exercicios, logs de treino e dados de dieta.
 
 - Banco versionado: `data/limulus.db`.
-- Versao atual do esquema: `SCHEMA_VERSION = 15`.
+- Versao atual do esquema: `SCHEMA_VERSION = 16`.
 - `training_sessions.started_at` e `completed_at` guardam horarios ISO com
   UTC-03:00; historicos migrados ficam nulos. `training_buttons` vincula token
   ao log e carga exibida. Cliques sao atomicos e invalidam botoes do log.
@@ -460,6 +543,9 @@ Dashboard local de volume:
   quando houver componente aplicavel. O HTML gerado nao deve exigir servidor ou
   build para abrir localmente, mas pode depender da CDN oficial configurada no
   arquivo para carregar os componentes.
+- A secao "Ficha do personagem" mostra nivel, EXP, atributos, chefes,
+  missoes e conquistas de `jogo.estado_atual()`; falha no jogo so omite a
+  secao.
 - `salvar_dashboard()` escreve `temp/dashboard-treino.html`.
 - O bot chama a mesma funcao em `/dashboard`; o comando nao cria ou altera
   sessoes e nao envia o arquivo HTML.
@@ -478,6 +564,8 @@ Dashboard local de volume:
 
 - `criar_backup()` usa a API de backup do SQLite.
 - `exportar_dados()` gera JSON com versao de esquema e tabelas do projeto.
+- `EXPORT_TABLES` inclui as tabelas do jogo (`jogo_estado`, `jogo_compras`
+  e `jogo_pausas`).
 - `restaurar_backup()` valida integridade, cria backup de seguranca quando o
   destino existe e substitui o banco somente depois de concluir a copia.
 
@@ -571,6 +659,7 @@ Referencias cientificas e notas de treino ficam em `docs/referencias-treino/`.
 Dependencias Python:
 
 - `requests`
+- `pillow` (imagens do jogo)
 
 Biblioteca padrao usada no projeto:
 
@@ -590,6 +679,9 @@ python tests/dashboard_test.py
 python tests/backup_export_test.py
 python tests/telegram_falhas_test.py
 python tests/e2e_training_flow_test.py
+python tests/jogo_test.py
+python tests/jogo_visual_test.py
+python tests/app_test.py
 python gerar_dashboard.py
 python start_bot.py
 ```

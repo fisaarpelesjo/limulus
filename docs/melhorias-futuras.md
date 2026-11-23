@@ -9,7 +9,9 @@ Entregue: fluxo de treino por botoes, carga exibida vinculada ao clique,
 protecao contra duplicidade, inicio/fim persistidos e resumo com duracao.
 Tambem entregues: piramide crescente por serie e conversao de carga por
 repeticoes (schema 14) e divisao de segunda a sexta em cinco planos A a E com
-rotacao automatica (schema 15).
+rotacao automatica (schema 15). O jogo estilo JRPG (fases 1 a 3) e o Mini App
+no GitHub Pages foram entregues em 2026-11-23 (schema 16); os numeros do jogo
+ainda precisam ser calibrados com o uso real.
 
 Pendente priorizado: volume real da piramide no dashboard (ver abaixo).
 
@@ -27,6 +29,11 @@ ou manter tarefas ja concluidas como se ainda fizessem parte da fila.
 - testar mudancas sem alterar o banco ou a sessao reais
 - manter interface e documentacao em PT-BR
 - evitar novos aliases e exigir `/` nos comandos textuais do Telegram
+- no jogo, premiar constancia e RPE certo, nunca tonelagem ou "fazer mais",
+  para nao incentivar series de lixo nem carga exagerada; sequencia semanal com
+  coringas e pausa, sem punir falta ou descanso (Hevy, Strava, Duolingo;
+  reserva de emergencia de Sharif e Shu); forca como eixo separado, relativa
+  ao peso corporal (Symmetric Strength, Liftoff)
 
 ## Novas Propostas
 
@@ -513,7 +520,16 @@ Antes de adicionar um item:
 ### App Android (PWA Instalavel)
 
 **Ideia registrada em 2026-11-23, para depois do jogo estabilizar:** ter um
-app no Android alem do Telegram. Caminho preferido: uma PWA servida pela VPS,
+app no Android alem do Telegram.
+
+**Primeiro passo entregue em 2026-11-23:** o Mini App do Telegram
+(`docs/app/index.html`, publicado pelo GitHub Pages em
+`https://fisaarpelesjo.github.io/limulus/app/`) mostra a ficha completa do
+personagem dentro do Telegram, sem servidor proprio: o estado vai no
+fragmento `#d=` da URL, entao a pagina e so leitura e depende do bot para
+gerar o link. Os passos abaixo continuam pendentes.
+
+**Proximo passo:** uma PWA servida pela VPS (caminho preferido),
 instalavel na tela inicial e, se for preciso um `.apk`, empacotada com
 Bubblewrap ou Capacitor. Reaproveita os modulos de `limulus/` por meio de uma
 API leve na VPS e le o mesmo SQLite, convivendo com o bot.
@@ -521,36 +537,29 @@ API leve na VPS e le o mesmo SQLite, convivendo com o bot.
 **Decisoes pendentes:** dominio com HTTPS para a VPS, forma de proteger o
 acesso (o bot hoje se protege pelo chat) e se havera notificacoes push.
 
-### Jogo Estilo JRPG: Fases 2 E 3
-
-**Problema observado:** a fase 1 (EXP, nivel, titulo, tela de vitoria,
-sequencia semanal 5 de 5 com 2 coringas por mes e `/perfil`) foi entregue em
-2026-11-23. Os numeros ainda precisam ser calibrados com o uso real.
-
-**Comportamento esperado:**
-
-- fase 2: classes que mudam pelo atributo mais treinado e evoluem com o
-  nivel; atributos FOR (rank por padrao de movimento relativo ao `/peso`, o
-  padrao mais fraco limita o rank geral), HIP (series efetivas por musculo via
-  `exercise_muscle_groups`) e DISCIPLINA (aderencia ao RPE e sequencia);
-  chefes por levantamento principal, derrotados por recorde com RPE ate 9
-- fase 3: conquistas, missoes semanais de qualidade (nunca "fazer mais"),
-  ouro para comprar coringas extras, `/pausa` para lesao ou viagem sem perder
-  a sequencia e card de nivel no dashboard
-- Muay Thai fica fora do jogo ate voltar aos planos; em 2026-11-23 ele foi
-  removido do codigo (`limulus/muaythai.py`, comandos e `mt_session.json`
-  continuam no historico do git) e volta quando estiver de novo nos planos
-
-**Principios vindos da pesquisa:** sequencia semanal com coringas (Hevy,
-Strava, Duolingo; reserva de emergencia de Sharif e Shu); nada de punir falta
-ou descanso; EXP por constancia e RPE certo, nao por tonelagem, para nao
-premiar series de lixo nem carga exagerada; forca como eixo separado,
-relativo ao peso corporal (Symmetric Strength, Liftoff).
-
 ## Historico De Entregas
 
 ### 2026-11-23
 
+- jogo estilo JRPG, fases 2 e 3 (schema 16, tabelas `jogo_estado`,
+  `jogo_compras` e `jogo_pausas`): classes pelo atributo dominante que evoluem
+  com o nivel; atributos FOR (forca relativa nos chefes), VIG (series
+  efetivas por musculo via `exercise_muscle_groups`; substituiu o HIP
+  planejado) e DIS (presenca e RPE 8-9 nas ultimas 8 semanas); chefes por
+  padrao de movimento com ranks Ferro a Diamante pela razao 1RM estimado /
+  peso corporal; conquistas; missoes semanais de qualidade; ouro e `/loja`
+  com coringa extra; `/pausa N` e `/pausa fim`; diario; comandos `/menu`,
+  `/chefes`, `/semana`, `/missoes`, `/conquistas`, `/diario` e `/app`;
+  secao "Ficha do personagem" no dashboard
+- camada visual do jogo: telas PNG em janela de menu JRPG azul
+  (`limulus/jogo_visual.py`) com pixel art original e fonte bitmap propria
+  com acentos (`limulus/jogo_sprites.py`); `pillow` entrou em
+  `requirements.txt`
+- tela de vitoria animada por edicoes da mensagem, confete em level up ou
+  semana completa, som de level up original
+  (`limulus/assets/jogo/level_up.ogg`) e HUD fixado no topo do chat
+- Mini App do Telegram no GitHub Pages (`docs/app/index.html`), aberto por
+  `/app` com o estado no fragmento `#d=`; primeiro passo do app Android
 - jogo estilo JRPG, fase 1: `limulus/jogo.py` calcula EXP, nivel, titulo e
   sequencia a partir do historico; tela de vitoria ao concluir o treino e
   comando `/perfil`

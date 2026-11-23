@@ -8,7 +8,7 @@ from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DB_PATH = DATA_DIR / "limulus.db"
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 def agora_brasilia():
@@ -547,6 +547,34 @@ SCHEMA_V15_STATEMENTS = (
     "UPDATE training_plans SET active = CASE WHEN name = 'A' THEN 1 ELSE 0 END",
 )
 
+# Schema 16: estado do jogo estilo JRPG. EXP, nivel e conquistas continuam
+# derivados do historico; aqui fica so o que nao da para derivar: compras na
+# loja, pausas declaradas e chaves simples (como a mensagem fixada do HUD).
+SCHEMA_V16_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS jogo_estado (
+        chave TEXT PRIMARY KEY,
+        valor TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS jogo_compras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item TEXT NOT NULL,
+        ouro INTEGER NOT NULL CHECK (ouro >= 0),
+        criado_em TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS jogo_pausas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inicio TEXT NOT NULL,
+        fim TEXT,
+        motivo TEXT
+    )
+    """,
+)
+
 MIGRATIONS = {
     1: SCHEMA_V1_STATEMENTS,
     2: SCHEMA_V2_STATEMENTS,
@@ -563,6 +591,7 @@ MIGRATIONS = {
     13: SCHEMA_V13_STATEMENTS,
     14: SCHEMA_V14_STATEMENTS,
     15: SCHEMA_V15_STATEMENTS,
+    16: SCHEMA_V16_STATEMENTS,
 }
 
 
